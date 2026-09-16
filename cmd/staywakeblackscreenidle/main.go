@@ -12,7 +12,7 @@
 // and it will black out again after another idle_minutes of inactivity,
 // repeating indefinitely.
 //
-// A tray icon (monitor glyph = guarding, same glyph greyed out with a
+// A tray icon (monitor glyph = enabled, same glyph greyed out with a
 // diagonal red strike = disabled) lets the user pause/resume without
 // stopping the process: left-click toggles it, right-click opens an
 // Enable/Disable/Configure/Exit menu. Configure opens config.yaml in

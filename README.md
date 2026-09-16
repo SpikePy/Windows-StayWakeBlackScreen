@@ -37,10 +37,11 @@ lets any program suppress it.
 
 ## Tray icon
 
-A monitor glyph while guarding; the same glyph greyed out with a diagonal
-red strike while disabled.
+A monitor glyph while enabled; the same glyph greyed out with a diagonal
+red strike while disabled. Hovering over it shows the version and the
+current state.
 
-- **Left-click** toggles guarding on and off.
+- **Left-click** toggles it between enabled and disabled.
 - **Right-click** opens a menu: Enable, Disable, Configure, Exit.
 
 Disabling restores input right away (if blacked out) and lets Windows

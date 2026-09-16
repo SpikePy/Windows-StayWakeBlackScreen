@@ -210,7 +210,7 @@ func (g *guard) openConfigFile() {
 // applyTrayIcon shows (or updates) the tray icon and tooltip for the
 // current enabled state.
 func (g *guard) applyTrayIcon() {
-	build, state := tray.EnabledIcon, "guarding"
+	build, state := tray.EnabledIcon, "enabled"
 	if !g.enabled {
 		build, state = tray.DisabledIcon, "disabled"
 	}

@@ -47,6 +47,13 @@ with the user first, then keep all of this true.
   all-users Startup folder, a service or a scheduled task. One
   consequence to accept: while an elevated window has focus, Windows
   won't let a non-elevated program's hooks see or block its input.
+- **Stay out of the registry.** Anything that has to persist belongs in
+  a plain file in the user's profile - settings in
+  `%LOCALAPPDATA%\<Tool>\config.yaml`, autostart as a Startup shortcut,
+  any other state next to them. The user can see, edit and delete those,
+  and uninstalling leaves nothing behind. Write to the registry only
+  where Windows offers no file-based alternative, and then only under
+  HKCU - or to remove a value an older version left there.
 - **Setup program**, one exe that both installs and uninstalls:
   interactive menu when double-clicked, defaulting to Install/update if
   nothing is chosen within 5s, closing itself 3s after an unattended
