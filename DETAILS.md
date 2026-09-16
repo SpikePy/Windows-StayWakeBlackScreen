@@ -41,8 +41,8 @@ starts it this way at sign-in.
 
 The tray icon is a monitor glyph while enabled and the same glyph greyed
 out with a red strike while disabled. Left-click toggles it; right-click
-opens Enable, Disable, Configure (opens `config.yaml` in its default
-editor) and Exit. The guard doesn't exit on its own otherwise: use
+opens Black out now (the same as opening the program), Enable, Disable,
+Configure (opens `config.yaml` in its default editor) and Exit. The guard doesn't exit on its own otherwise: use
 *Exit*, Task Manager/`taskkill`, or Setup, which stops it when updating
 or uninstalling.
 

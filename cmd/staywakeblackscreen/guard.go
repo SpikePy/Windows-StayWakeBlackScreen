@@ -11,10 +11,11 @@ import (
 )
 
 const (
-	menuIDEnable    = 1
-	menuIDDisable   = 2
-	menuIDConfigure = 3
-	menuIDExit      = 4
+	menuIDEnable      = 1
+	menuIDDisable     = 2
+	menuIDConfigure   = 3
+	menuIDExit        = 4
+	menuIDBlackoutNow = 5
 )
 
 // guard is the idle guard's state and behaviour. All its methods run on
@@ -151,8 +152,8 @@ func (g *guard) enterBlackout(reason string) error {
 	return nil
 }
 
-// blackoutNow is what a copy of the program opened for an instant black
-// screen asks for. It works whether or not the guard is enabled; a
+// blackoutNow is the tray menu's "Black out now", and what a copy of the
+// program opened for an instant black screen asks for. It works whether or not the guard is enabled; a
 // disabled guard just has to keep Windows awake while the blackout lasts.
 func (g *guard) blackoutNow() {
 	if g.session != nil {
@@ -215,6 +216,8 @@ func (g *guard) setEnabled(v bool) {
 // showMenu is the tray icon's right-click action.
 func (g *guard) showMenu() {
 	id := tray.ShowMenu(g.trayHwnd, []tray.MenuItem{
+		{ID: menuIDBlackoutNow, Label: "Black out now"},
+		{},
 		{ID: menuIDEnable, Label: "Enable", Checked: g.enabled},
 		{ID: menuIDDisable, Label: "Disable", Checked: !g.enabled},
 		{},
@@ -223,6 +226,8 @@ func (g *guard) showMenu() {
 		{ID: menuIDExit, Label: "Exit"},
 	})
 	switch id {
+	case menuIDBlackoutNow:
+		g.blackoutNow()
 	case menuIDEnable:
 		g.setEnabled(true)
 	case menuIDDisable:
