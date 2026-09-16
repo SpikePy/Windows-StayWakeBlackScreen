@@ -36,9 +36,13 @@ package main
 
 import (
 	"flag"
+	"os"
+	"path/filepath"
 	"runtime"
+	"strings"
 
 	"windows-stay-wake-black-screen/internal/applog"
+	"windows-stay-wake-black-screen/internal/autostart"
 	"windows-stay-wake-black-screen/internal/blackout"
 	"windows-stay-wake-black-screen/internal/config"
 	"windows-stay-wake-black-screen/internal/singleinstance"
@@ -59,6 +63,7 @@ func main() {
 	idleMinutes := flag.Int("idle-minutes", cfg.IdleMinutes, "minutes of inactivity before blacking out (overrides config.yaml)")
 	heartbeatSeconds := flag.Int("heartbeat-seconds", cfg.HeartbeatSeconds, "seconds between Caps Lock activity heartbeats while blacked out (overrides config.yaml)")
 	startEnabled := flag.Bool("start-enabled", cfg.StartEnabled, "whether the idle guard is active on launch (overrides config.yaml)")
+	autostartOn := flag.Bool("autostart", cfg.Autostart, "start at sign-in through a Startup-folder shortcut; the installed copy applies this every time it starts (overrides config.yaml)")
 	enableLogging := flag.Bool("enable-logging", false, "write diagnostics to StayWakeBlackScreenIdle.log next to the exe")
 	flag.Parse()
 
@@ -77,6 +82,8 @@ func main() {
 		return
 	}
 	defer release()
+
+	syncAutostart(*autostartOn, logf)
 
 	g := newGuard(logf, blackout.IdleThresholdMs(*idleMinutes), blackout.HeartbeatMs(*heartbeatSeconds), *startEnabled)
 	defer func() {
@@ -111,4 +118,31 @@ func main() {
 		return
 	}
 	logf("Message loop returned (Exit or unexpected shutdown).")
+}
+
+// syncAutostart keeps the Startup shortcut in line with the autostart
+// setting, so an edited config.yaml takes effect on the next start without
+// re-running Setup. Only the installed copy - the one next to config.yaml -
+// does this, so running a build from anywhere else never repoints
+// autostart at it.
+func syncAutostart(enabled bool, logf func(format string, args ...any)) {
+	exe, err := os.Executable()
+	if err != nil {
+		logf("WARNING locating own exe, leaving autostart alone: %v", err)
+		return
+	}
+	cfgPath, err := config.Path()
+	if err != nil {
+		logf("WARNING locating config.yaml, leaving autostart alone: %v", err)
+		return
+	}
+	if !strings.EqualFold(filepath.Dir(exe), filepath.Dir(cfgPath)) {
+		logf("Not the installed copy (%s) - leaving autostart alone", exe)
+		return
+	}
+	if err := autostart.Apply(enabled, exe); err != nil {
+		logf("EXCEPTION updating autostart: %v", err)
+		return
+	}
+	logf("Startup shortcut matches autostart=%t", enabled)
 }

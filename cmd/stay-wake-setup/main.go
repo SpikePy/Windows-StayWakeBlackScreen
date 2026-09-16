@@ -36,8 +36,8 @@ func main() {
 	mode := flag.String("mode", "", "skip the interactive menu and run this action directly: install or uninstall")
 	installDir := flag.String("install-dir", "", "directory to install into/remove from (default: %LOCALAPPDATA%\\StayWakeBlackScreen)")
 	githubToken := flag.String("github-token", "", "optional GitHub token, to avoid the unauthenticated API rate limit (install only)")
-	noLaunch := flag.Bool("no-launch", false, "install/update and register autostart, but don't start it now (install only)")
-	noAutostart := flag.Bool("no-autostart", false, "don't register (or update) the autostart entry (install only)")
+	noLaunch := flag.Bool("no-launch", false, "install/update without starting it now (install only)")
+	noAutostart := flag.Bool("no-autostart", false, "leave the Startup shortcut as it is instead of applying config.yaml's autostart setting (install only)")
 	keepFiles := flag.Bool("keep-files", false, "remove autostart and stop the process, but don't delete the installed files (uninstall only)")
 	flag.Parse()
 

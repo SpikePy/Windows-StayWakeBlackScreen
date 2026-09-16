@@ -60,14 +60,15 @@ so the error is still on screen when you come back.
 
 **Install / update** downloads the latest released
 `StayWakeBlackScreenIdle.exe`, installs it to
-`%LOCALAPPDATA%\StayWakeBlackScreen\`, registers it to autostart at
-login, and (re)starts it — stopping any already-running copy first so the
+`%LOCALAPPDATA%\StayWakeBlackScreen\`, sets up autostart, and
+(re)starts it — stopping any already-running copy first so the
 file can be replaced. Autostart is a shortcut in your own Startup folder
-(`%APPDATA%\Microsoft\Windows\Start Menu\Programs\Startup`), so you can
-see and remove it in Explorer, and nothing here — install, autostart or
+(`%APPDATA%\Microsoft\Windows\Start Menu\Programs\Startup`), present only
+while the `autostart` setting is `true` (the default); Setup adds or
+removes it to match. You can see it in Explorer, and nothing here — install, autostart or
 uninstall — needs administrator rights. Safe to re-run any time to
-update: it always ends up with exactly **one** autostart entry (the
-shortcut is replaced, never duplicated, and an autostart registry value
+update: it always ends up with at most **one** Startup shortcut (it is
+replaced, never duplicated, and an autostart registry value
 left behind by an older version is removed) and exactly **one** running
 instance:
 
@@ -90,8 +91,8 @@ For scripted use, `-mode install` or `-mode uninstall` skips the menu
 entirely. Other flags: `-install-dir <path>` (override the install
 location), `-github-token <token>` (avoid GitHub's unauthenticated API
 rate limit, install only), `-no-launch` (install/update without starting
-it now, install only), `-no-autostart` (skip the registry entry, install
-only), `-keep-files` (remove autostart and stop the process, but leave
+it now, install only), `-no-autostart` (leave the Startup shortcut as it
+is instead of applying the `autostart` setting, install only), `-keep-files` (remove autostart and stop the process, but leave
 the installed files in place, uninstall only).
 
 ## Settings reference
@@ -103,6 +104,7 @@ the installed files in place, uninstall only).
 idle_minutes: 3
 heartbeat_seconds: 5
 start_enabled: true
+autostart: true
 ```
 
 | Option | Default | Description |
@@ -110,10 +112,11 @@ start_enabled: true
 | `idle_minutes` | `3` | Minutes of inactivity (no real keyboard/mouse input) before the screen blacks out. |
 | `heartbeat_seconds` | `5` | While blacked out, how often (seconds) the program toggles Caps Lock as a harmless "still alive" signal that keeps Windows from treating the session as idle. |
 | `start_enabled` | `true` | Whether the idle guard is active as soon as the program starts. Set to `false` to start paused — no sleep blocking, no blackout — until enabled from the tray menu. |
+| `autostart` | `true` | Whether the program starts by itself when you sign in, through a shortcut in your Startup folder. The installed program adds or removes that shortcut to match every time it starts, so a change applies on the next start. |
 
 Edit a value and restart the program to apply it. Each option also has a
 matching command-line flag (`-idle-minutes`, `-heartbeat-seconds`,
-`-start-enabled`) which, if passed, overrides the config file for that
+`-start-enabled`, `-autostart`) which, if passed, overrides the config file for that
 run only. Config files from older versions may still contain a
 `poll_ms` line; it's no longer used (nothing polls any more) and is
 ignored.
@@ -137,6 +140,10 @@ ignored.
   idle threshold would be reached (re-arming it for the rest if there was
   input in the meantime), and the input hook wakes the program directly
   when Escape is pressed.
+- Autostart is a shortcut in your own Startup folder, kept in line with
+  the `autostart` setting: the installed program adds or removes it every
+  time it starts (a copy run from anywhere else leaves it alone), and
+  Setup does the same on install. No registry entry is involved.
 - The tray icon is re-added by the program itself whenever Explorer
   restarts (the `TaskbarCreated` broadcast), which otherwise wipes every
   tray icon for good.
@@ -208,6 +215,7 @@ internal/monitoricon/     The monitor glyph's geometry, shared by the
 internal/singleinstance/  Named-mutex single-instance guard
 internal/setup/           Install/uninstall logic shared by Setup_StayWakeBlackScreenIdle.exe
 internal/setupmenu/       Setup's interactive console menu (OS-independent)
+internal/autostart/       Startup-folder shortcut, kept in line with the setting
 internal/config/          Loads, and on first run creates, config.yaml
 internal/applog/          Opt-in diagnostics log next to the exe
 tools/genicon/            Renders internal/monitoricon as a .ico file

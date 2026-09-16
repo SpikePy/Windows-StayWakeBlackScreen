@@ -25,6 +25,7 @@ const (
 	DefaultIdleMinutes      = 3
 	DefaultHeartbeatSeconds = 5
 	DefaultStartEnabled     = true
+	DefaultAutostart        = true
 )
 
 const fileName = "config.yaml"
@@ -45,6 +46,11 @@ heartbeat_seconds: %d
 # starts (true), or starts paused - no blackout, no sleep blocking - until
 # enabled from the tray menu (false).
 start_enabled: %t
+
+# autostart: whether the program starts by itself when you sign in to
+# Windows (true), through a shortcut in your Startup folder, or not
+# (false). Applied the next time the program starts.
+autostart: %t
 `
 
 // Config holds the settings read from config.yaml. Keys it doesn't know,
@@ -53,6 +59,7 @@ type Config struct {
 	IdleMinutes      int
 	HeartbeatSeconds int
 	StartEnabled     bool
+	Autostart        bool
 }
 
 func defaults() Config {
@@ -60,6 +67,7 @@ func defaults() Config {
 		IdleMinutes:      DefaultIdleMinutes,
 		HeartbeatSeconds: DefaultHeartbeatSeconds,
 		StartEnabled:     DefaultStartEnabled,
+		Autostart:        DefaultAutostart,
 	}
 }
 
@@ -81,7 +89,7 @@ func Load() (Config, error) {
 
 	data, err := os.ReadFile(path)
 	if os.IsNotExist(err) {
-		text := fmt.Sprintf(template, DefaultIdleMinutes, DefaultHeartbeatSeconds, DefaultStartEnabled)
+		text := fmt.Sprintf(template, DefaultIdleMinutes, DefaultHeartbeatSeconds, DefaultStartEnabled, DefaultAutostart)
 		if werr := os.WriteFile(path, []byte(text), 0o644); werr != nil {
 			return def, fmt.Errorf("writing default config.yaml: %w", werr)
 		}
@@ -139,6 +147,8 @@ func parse(data []byte, cfg *Config) error {
 			cfg.HeartbeatSeconds, err = strconv.Atoi(value)
 		case "start_enabled":
 			cfg.StartEnabled, err = parseBool(value)
+		case "autostart":
+			cfg.Autostart, err = parseBool(value)
 		default:
 			continue // a setting this version doesn't know
 		}

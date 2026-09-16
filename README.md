@@ -18,8 +18,9 @@ Download `Setup_StayWakeBlackScreenIdle.exe` from the
 [Releases](../../releases) page and run it. Its menu offers **Install /
 update** and **Uninstall**; left alone for 5 seconds it installs or
 updates on its own. Installing puts `StayWakeBlackScreenIdle.exe` into
-`%LOCALAPPDATA%\StayWakeBlackScreen\`, starts it, and adds a shortcut to
-your Startup folder so it comes back at login. Re-run it any time to
+`%LOCALAPPDATA%\StayWakeBlackScreen\`, starts it, and — while the
+`autostart` setting is on, as it is by default — adds a shortcut to your
+Startup folder so it comes back at sign-in. Re-run it any time to
 update. Nothing here needs administrator rights.
 
 ## The programs
@@ -58,6 +59,7 @@ On first run it creates `%LOCALAPPDATA%\StayWakeBlackScreen\config.yaml`
 idle_minutes: 3        # idle time before the screen blacks out
 heartbeat_seconds: 5   # how often Caps Lock is pulsed while blacked out
 start_enabled: true    # false = start paused, enable it from the tray
+autostart: true        # start at sign-in via a Startup-folder shortcut
 ```
 
 Edit a value and restart the program to apply it. Every setting also has

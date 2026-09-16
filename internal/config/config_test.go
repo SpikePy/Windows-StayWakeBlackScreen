@@ -35,7 +35,7 @@ func TestLoadCreatesDefaultFile(t *testing.T) {
 	if err != nil {
 		t.Fatalf("default config.yaml was not created: %v", err)
 	}
-	for _, line := range []string{"idle_minutes: 3", "heartbeat_seconds: 5", "start_enabled: true"} {
+	for _, line := range []string{"idle_minutes: 3", "heartbeat_seconds: 5", "start_enabled: true", "autostart: true"} {
 		if !strings.Contains(string(data), line) {
 			t.Errorf("created config.yaml is missing %q", line)
 		}
@@ -56,47 +56,52 @@ func TestLoad(t *testing.T) {
 		{
 			name: "file predating newer fields keeps their defaults",
 			yaml: "idle_minutes: 7\n",
-			want: Config{IdleMinutes: 7, HeartbeatSeconds: 5, StartEnabled: true},
+			want: Config{Autostart: true, IdleMinutes: 7, HeartbeatSeconds: 5, StartEnabled: true},
 		},
 		{
 			name: "every field overridden",
 			yaml: "idle_minutes: 10\nheartbeat_seconds: 2\nstart_enabled: false\n",
-			want: Config{IdleMinutes: 10, HeartbeatSeconds: 2, StartEnabled: false},
+			want: Config{Autostart: true, IdleMinutes: 10, HeartbeatSeconds: 2, StartEnabled: false},
 		},
 		{
 			name: "invalid values fall back per field",
 			yaml: "idle_minutes: -1\nheartbeat_seconds: 0\nstart_enabled: false\n",
-			want: Config{IdleMinutes: 3, HeartbeatSeconds: 5, StartEnabled: false},
+			want: Config{Autostart: true, IdleMinutes: 3, HeartbeatSeconds: 5, StartEnabled: false},
 		},
 		{
 			name: "poll_ms from older versions is ignored",
 			yaml: "idle_minutes: 4\npoll_ms: 100\n",
-			want: Config{IdleMinutes: 4, HeartbeatSeconds: 5, StartEnabled: true},
+			want: Config{Autostart: true, IdleMinutes: 4, HeartbeatSeconds: 5, StartEnabled: true},
+		},
+		{
+			name: "autostart can be switched off",
+			yaml: "autostart: false\n",
+			want: Config{IdleMinutes: 3, HeartbeatSeconds: 5, StartEnabled: true, Autostart: false},
 		},
 		{
 			name: "comments, blank lines and odd spacing",
 			yaml: "# header\n\n  idle_minutes:   7   # was 3\n\n# trailing note\nstart_enabled: false\n",
-			want: Config{IdleMinutes: 7, HeartbeatSeconds: 5, StartEnabled: false},
+			want: Config{Autostart: true, IdleMinutes: 7, HeartbeatSeconds: 5, StartEnabled: false},
 		},
 		{
 			name: "windows line endings and a Notepad byte order mark",
 			yaml: "\ufeff# edited in Notepad\r\nidle_minutes: 9\r\nheartbeat_seconds: 2\r\n",
-			want: Config{IdleMinutes: 9, HeartbeatSeconds: 2, StartEnabled: true},
+			want: Config{Autostart: true, IdleMinutes: 9, HeartbeatSeconds: 2, StartEnabled: true},
 		},
 		{
 			name: "quoted values and yes/no booleans",
 			yaml: "idle_minutes: \"8\"\nstart_enabled: no\n",
-			want: Config{IdleMinutes: 8, HeartbeatSeconds: 5, StartEnabled: false},
+			want: Config{Autostart: true, IdleMinutes: 8, HeartbeatSeconds: 5, StartEnabled: false},
 		},
 		{
 			name: "a key with no value keeps its default",
 			yaml: "idle_minutes:\nheartbeat_seconds: 4\n",
-			want: Config{IdleMinutes: 3, HeartbeatSeconds: 4, StartEnabled: true},
+			want: Config{Autostart: true, IdleMinutes: 3, HeartbeatSeconds: 4, StartEnabled: true},
 		},
 		{
 			name: "the generated file itself round-trips",
 			yaml: "# StayWakeBlackScreen configuration\n#\n# idle_minutes: minutes of inactivity\nidle_minutes: 3\n\nheartbeat_seconds: 5\n\nstart_enabled: true\n",
-			want: Config{IdleMinutes: 3, HeartbeatSeconds: 5, StartEnabled: true},
+			want: Config{Autostart: true, IdleMinutes: 3, HeartbeatSeconds: 5, StartEnabled: true},
 		},
 	}
 	for _, tt := range tests {
@@ -124,6 +129,7 @@ func TestLoadRejectsBrokenFiles(t *testing.T) {
 		{"value that isn't a number", "idle_minutes: [not a number\n"},
 		{"letters where a number belongs", "heartbeat_seconds: often\n"},
 		{"value that isn't true or false", "start_enabled: maybe\n"},
+		{"autostart that isn't true or false", "autostart: sometimes\n"},
 		{"a line that isn't key: value", "idle_minutes 3\n"},
 	}
 	for _, tt := range tests {

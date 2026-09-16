@@ -10,7 +10,6 @@ package setup
 import (
 	"bytes"
 	"encoding/json"
-	"errors"
 	"fmt"
 	"os"
 	"os/exec"
@@ -20,7 +19,9 @@ import (
 	"unsafe"
 
 	"golang.org/x/sys/windows"
-	"golang.org/x/sys/windows/registry"
+
+	"windows-stay-wake-black-screen/internal/autostart"
+	"windows-stay-wake-black-screen/internal/config"
 )
 
 const (
@@ -34,14 +35,6 @@ const (
 	// running.
 	idleAssetName = "StayWakeBlackScreenIdle.exe"
 	mainAssetName = "StayWakeBlackScreen.exe"
-
-	// startupLinkName is the shortcut dropped in the user's own Startup
-	// folder. Autostart used to be a registry value instead; the legacy
-	// names below exist only to clean that up on install and uninstall.
-	startupLinkName = "StayWakeBlackScreenIdle.lnk"
-
-	legacyRunKeyPath   = `Software\Microsoft\Windows\CurrentVersion\Run`
-	legacyRunValueName = "StayWakeBlackScreenIdle"
 
 	userAgent = "stay-wake-setup"
 )
@@ -74,18 +67,18 @@ type InstallOptions struct {
 	InstallDir  string // defaults to %LOCALAPPDATA%\StayWakeBlackScreen if empty
 	GitHubToken string // optional, avoids the unauthenticated API rate limit
 	NoLaunch    bool   // install/update without starting it now
-	NoAutostart bool   // don't register (or update) the autostart entry
+	NoAutostart bool   // leave the Startup shortcut as it is instead of applying the autostart setting
 }
 
 // Install downloads the latest released StayWakeBlackScreenIdle.exe,
-// installs it under the current user's %LOCALAPPDATA%, registers it to
-// autostart at login, and (re)starts it - terminating any already-running
-// copy first so the file can be replaced and so at most one copy is ever
-// running at a time. Safe to re-run to update in place: it always ends up
-// with exactly one autostart registry entry (a single named value, so
-// re-running never adds a duplicate) and exactly one running instance
-// (the app itself also refuses to start a second copy via a named mutex -
-// see internal/singleinstance - so this is belt and suspenders).
+// installs it under the current user's %LOCALAPPDATA%, sets up autostart
+// the way config.yaml's autostart setting says, and (re)starts it -
+// terminating any already-running copy first so the file can be replaced
+// and so at most one copy is ever running at a time. Safe to re-run to
+// update in place: it always ends up with at most one Startup shortcut
+// (re-running replaces it, never adds a second) and exactly one running
+// instance (the app itself also refuses to start a second copy via a named
+// mutex - see internal/singleinstance - so this is belt and suspenders).
 func Install(opts InstallOptions) error {
 	installDir, err := resolveInstallDir(opts.InstallDir)
 	if err != nil {
@@ -130,9 +123,19 @@ func Install(opts InstallOptions) error {
 	}
 
 	if !opts.NoAutostart {
-		fmt.Println("Registering autostart...")
-		if err := setAutostart(targetPath); err != nil {
-			return fmt.Errorf("registering autostart: %w", err)
+		// A config.yaml that can't be read still yields the defaults,
+		// which have autostart on.
+		cfg, err := config.Load()
+		if err != nil {
+			fmt.Printf("Warning: %v - using the default settings.\n", err)
+		}
+		if cfg.Autostart {
+			fmt.Println("Adding the Startup shortcut (autostart: true)...")
+		} else {
+			fmt.Println("Removing the Startup shortcut (autostart: false in config.yaml)...")
+		}
+		if err := autostart.Apply(cfg.Autostart, targetPath); err != nil {
+			return fmt.Errorf("updating autostart: %w", err)
 		}
 	}
 
@@ -153,7 +156,7 @@ type UninstallOptions struct {
 	KeepFiles  bool   // remove autostart and stop the process, but leave the installed files in place
 }
 
-// Uninstall reverses Install: removes the autostart registry entry,
+// Uninstall reverses Install: removes the Startup shortcut,
 // terminates any running copy of StayWakeBlackScreenIdle.exe or
 // StayWakeBlackScreen.exe, and (unless KeepFiles) deletes the installed
 // files.
@@ -163,8 +166,8 @@ func Uninstall(opts UninstallOptions) error {
 		return err
 	}
 
-	fmt.Println("Removing autostart entry...")
-	if err := removeAutostart(); err != nil {
+	fmt.Println("Removing the Startup shortcut...")
+	if err := autostart.Remove(); err != nil {
 		return fmt.Errorf("removing autostart: %w", err)
 	}
 
@@ -234,57 +237,6 @@ func replaceFile(tmpPath, targetPath string) error {
 	}
 	os.Remove(tmpPath)
 	return err
-}
-
-// autostartLinkPath is the shortcut in the current user's own Startup
-// folder. Being per-user, creating and deleting it needs no
-// administrator rights, and the user can see it in Explorer.
-func autostartLinkPath() (string, error) {
-	dir, err := windows.KnownFolderPath(windows.FOLDERID_Startup, 0)
-	if err != nil {
-		return "", fmt.Errorf("locating the Startup folder: %w", err)
-	}
-	return filepath.Join(dir, startupLinkName), nil
-}
-
-func setAutostart(targetPath string) error {
-	link, err := autostartLinkPath()
-	if err != nil {
-		return err
-	}
-	if err := createShortcut(link, targetPath, "StayWakeBlackScreen idle guard"); err != nil {
-		return err
-	}
-	// Versions before the Startup shortcut autostarted through the
-	// registry; drop that so the program isn't started twice.
-	return removeLegacyRunValue()
-}
-
-func removeAutostart() error {
-	link, err := autostartLinkPath()
-	if err != nil {
-		return err
-	}
-	if err := os.Remove(link); err != nil && !os.IsNotExist(err) {
-		return err
-	}
-	return removeLegacyRunValue()
-}
-
-func removeLegacyRunValue() error {
-	key, err := registry.OpenKey(registry.CURRENT_USER, legacyRunKeyPath, registry.SET_VALUE)
-	if errors.Is(err, registry.ErrNotExist) {
-		return nil
-	}
-	if err != nil {
-		return err
-	}
-	defer key.Close()
-
-	if err := key.DeleteValue(legacyRunValueName); err != nil && !errors.Is(err, registry.ErrNotExist) {
-		return err
-	}
-	return nil
 }
 
 // terminateRunning finds every running process whose image file name
