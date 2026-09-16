@@ -72,10 +72,14 @@ with the user first, then keep all of this true.
   `-unsafeptr=false` under `GOOS=windows`, build - publishing nothing)
   and `build.yml` on `v*` tags (same checks, then build every exe and
   publish a GitHub Release).
-- **Docs**: `README.md` with what it is, install, the programs, settings
-  and safety notes; `DETAILS.md` with the full flag reference, internals,
-  building from source and layout. Plus a `LICENSE` (MIT unless the user
-  says otherwise).
+- **Docs always split in two.** `README.md` stays short and basic: what
+  the tool is, how to install it, the programs, the handful of settings,
+  safety notes - and a link to the details. Everything long lives in
+  `DETAILS.md`: the full flag reference, how it works internally,
+  logging, building from source, the package layout and CI, with a link
+  back to the README. Never let the README grow into the reference; when
+  it starts to, move that part across and link it. Plus a `LICENSE` (MIT
+  unless the user says otherwise).
 - **Logging off by default**, enabled with `-enable-logging`, written
   next to the exe.
 
