@@ -18,8 +18,9 @@ Download `Setup_StayWakeBlackScreenIdle.exe` from the
 [Releases](../../releases) page and run it. Its menu offers **Install /
 update** and **Uninstall**; left alone for 5 seconds it installs or
 updates on its own. Installing puts `StayWakeBlackScreenIdle.exe` into
-`%LOCALAPPDATA%\StayWakeBlackScreen\`, starts it, and registers it to
-start at login. Re-run it any time to update.
+`%LOCALAPPDATA%\StayWakeBlackScreen\`, starts it, and adds a shortcut to
+your Startup folder so it comes back at login. Re-run it any time to
+update. Nothing here needs administrator rights.
 
 ## The programs
 

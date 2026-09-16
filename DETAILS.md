@@ -62,9 +62,13 @@ so the error is still on screen when you come back.
 `StayWakeBlackScreenIdle.exe`, installs it to
 `%LOCALAPPDATA%\StayWakeBlackScreen\`, registers it to autostart at
 login, and (re)starts it — stopping any already-running copy first so the
-file can be replaced. Safe to re-run any time to update: it always ends
-up with exactly **one** autostart entry (a single named registry value —
-re-running never creates a duplicate) and exactly **one** running
+file can be replaced. Autostart is a shortcut in your own Startup folder
+(`%APPDATA%\Microsoft\Windows\Start Menu\Programs\Startup`), so you can
+see and remove it in Explorer, and nothing here — install, autostart or
+uninstall — needs administrator rights. Safe to re-run any time to
+update: it always ends up with exactly **one** autostart entry (the
+shortcut is replaced, never duplicated, and an autostart registry value
+left behind by an older version is removed) and exactly **one** running
 instance:
 
 - Setup terminates any already-running copy before replacing the file
@@ -77,9 +81,10 @@ It only ever downloads the idle variant (`StayWakeBlackScreenIdle.exe`)
 — `StayWakeBlackScreen.exe` is left as a manual, run-when-you-want-it
 tool.
 
-**Uninstall** removes the autostart registry entry, stops any running
-copy of `StayWakeBlackScreenIdle.exe` or `StayWakeBlackScreen.exe`, and
-deletes the installed files.
+**Uninstall** removes the Startup shortcut (and the autostart registry
+value older versions used), stops any running copy of
+`StayWakeBlackScreenIdle.exe` or `StayWakeBlackScreen.exe`, and deletes
+the installed files.
 
 For scripted use, `-mode install` or `-mode uninstall` skips the menu
 entirely. Other flags: `-install-dir <path>` (override the install

@@ -35,8 +35,13 @@ const (
 	idleAssetName = "StayWakeBlackScreenIdle.exe"
 	mainAssetName = "StayWakeBlackScreen.exe"
 
-	runKeyPath   = `Software\Microsoft\Windows\CurrentVersion\Run`
-	runValueName = "StayWakeBlackScreenIdle"
+	// startupLinkName is the shortcut dropped in the user's own Startup
+	// folder. Autostart used to be a registry value instead; the legacy
+	// names below exist only to clean that up on install and uninstall.
+	startupLinkName = "StayWakeBlackScreenIdle.lnk"
+
+	legacyRunKeyPath   = `Software\Microsoft\Windows\CurrentVersion\Run`
+	legacyRunValueName = "StayWakeBlackScreenIdle"
 
 	userAgent = "stay-wake-setup"
 )
@@ -231,17 +236,43 @@ func replaceFile(tmpPath, targetPath string) error {
 	return err
 }
 
+// autostartLinkPath is the shortcut in the current user's own Startup
+// folder. Being per-user, creating and deleting it needs no
+// administrator rights, and the user can see it in Explorer.
+func autostartLinkPath() (string, error) {
+	dir, err := windows.KnownFolderPath(windows.FOLDERID_Startup, 0)
+	if err != nil {
+		return "", fmt.Errorf("locating the Startup folder: %w", err)
+	}
+	return filepath.Join(dir, startupLinkName), nil
+}
+
 func setAutostart(targetPath string) error {
-	key, _, err := registry.CreateKey(registry.CURRENT_USER, runKeyPath, registry.SET_VALUE)
+	link, err := autostartLinkPath()
 	if err != nil {
 		return err
 	}
-	defer key.Close()
-	return key.SetStringValue(runValueName, `"`+targetPath+`"`)
+	if err := createShortcut(link, targetPath, "StayWakeBlackScreen idle guard"); err != nil {
+		return err
+	}
+	// Versions before the Startup shortcut autostarted through the
+	// registry; drop that so the program isn't started twice.
+	return removeLegacyRunValue()
 }
 
 func removeAutostart() error {
-	key, err := registry.OpenKey(registry.CURRENT_USER, runKeyPath, registry.SET_VALUE)
+	link, err := autostartLinkPath()
+	if err != nil {
+		return err
+	}
+	if err := os.Remove(link); err != nil && !os.IsNotExist(err) {
+		return err
+	}
+	return removeLegacyRunValue()
+}
+
+func removeLegacyRunValue() error {
+	key, err := registry.OpenKey(registry.CURRENT_USER, legacyRunKeyPath, registry.SET_VALUE)
 	if errors.Is(err, registry.ErrNotExist) {
 		return nil
 	}
@@ -250,7 +281,7 @@ func removeAutostart() error {
 	}
 	defer key.Close()
 
-	if err := key.DeleteValue(runValueName); err != nil && !errors.Is(err, registry.ErrNotExist) {
+	if err := key.DeleteValue(legacyRunValueName); err != nil && !errors.Is(err, registry.ErrNotExist) {
 		return err
 	}
 	return nil
