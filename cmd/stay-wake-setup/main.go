@@ -1,12 +1,9 @@
 //go:build windows
 
-// Command stay-wake-setup is the single entry point for installing,
-// updating, and uninstalling StayWakeBlackScreenIdle.exe. Run it with no
-// arguments (e.g. by double-clicking Setup_StayWakeBlackScreenIdle.exe)
-// and it shows an interactive menu to choose "Install / update" or
-// "Uninstall" - defaulting to "Install / update" on its own if nothing
-// is chosen within promptTimeout. Pass -mode to skip the prompt for
-// scripted use.
+// Command stay-wake-setup installs, updates and uninstalls
+// StayWakeBlackScreen. Opened normally it shows a small Windows dialog
+// with the three choices (see dialog.go); -mode runs one of them directly
+// for scripts, printing its steps to the console it was started from.
 package main
 
 import (
@@ -14,78 +11,85 @@ import (
 	"fmt"
 	"os"
 	"strings"
-	"time"
+
+	"golang.org/x/sys/windows"
 
 	"windows-stay-wake-black-screen/internal/setup"
-	"windows-stay-wake-black-screen/internal/setupmenu"
 )
 
-// promptTimeout is how long the menu waits for a first keypress before
-// defaulting to "install" on its own - so double-clicking the exe and
-// walking away still gets the tool installed/updated.
-const promptTimeout = 5 * time.Second
+// version is stamped in at build time via -ldflags "-X main.version=...";
+// left as "dev" for local/manual builds.
+var version = "dev"
 
-// autoExitTimeout caps the final "press Enter to exit" wait when the
-// action was auto-chosen and succeeded: nobody was at the keyboard for
-// promptTimeout, so there's likely nobody left to press Enter either. A
-// failed auto-chosen run waits for Enter like a manual one, so the error
-// is still on screen for whoever comes back to it.
-const autoExitTimeout = 3 * time.Second
+// options are the flags that shape what an action does.
+type options struct {
+	installDir                       string
+	noLaunch, noAutostart, keepFiles bool
+}
 
 func main() {
-	mode := flag.String("mode", "", "skip the interactive menu and run this action directly: install or uninstall")
+	mode := flag.String("mode", "", "run without the dialog: background (or install), instant, or uninstall")
 	installDir := flag.String("install-dir", "", "directory to install into/remove from (default: %LOCALAPPDATA%\\StayWakeBlackScreen)")
-	githubToken := flag.String("github-token", "", "optional GitHub token, to avoid the unauthenticated API rate limit (install only)")
-	noLaunch := flag.Bool("no-launch", false, "install/update without starting it now (install only)")
-	noAutostart := flag.Bool("no-autostart", false, "leave the Startup shortcut as it is instead of applying config.yaml's autostart setting (install only)")
-	keepFiles := flag.Bool("keep-files", false, "remove autostart and stop the process, but don't delete the installed files (uninstall only)")
+	noLaunch := flag.Bool("no-launch", false, "background: install without starting the idle guard now")
+	noAutostart := flag.Bool("no-autostart", false, "leave the autostart setting and Startup shortcut as they are (install only)")
+	keepFiles := flag.Bool("keep-files", false, "remove the shortcuts and stop the program, but don't delete the installed files (uninstall only)")
 	flag.Parse()
 
-	interactive := *mode == ""
-	action := strings.ToLower(*mode)
-	autoChosen := false
-
-	var in setupmenu.Lines
-	if interactive {
-		in = setupmenu.ReadLines(os.Stdin)
-		var err error
-		action, autoChosen, err = setupmenu.Prompt(in, os.Stdout, promptTimeout)
-		if err != nil {
-			fmt.Fprintln(os.Stderr, "error:", err)
-			os.Exit(1)
-		}
+	o := options{*installDir, *noLaunch, *noAutostart, *keepFiles}
+	if *mode == "" {
+		os.Exit(runDialog(o))
 	}
 
-	var err error
-	switch action {
-	case "install":
-		err = setup.Install(setup.InstallOptions{
-			InstallDir:  *installDir,
-			GitHubToken: *githubToken,
-			NoLaunch:    *noLaunch,
-			NoAutostart: *noAutostart,
-		})
-	case "uninstall":
-		err = setup.Uninstall(setup.UninstallOptions{
-			InstallDir: *installDir,
-			KeepFiles:  *keepFiles,
-		})
-	default:
-		fmt.Fprintf(os.Stderr, "error: unknown -mode %q (want install or uninstall)\n", *mode)
-		os.Exit(1)
-	}
-
-	if err != nil {
+	attachConsole()
+	if err := run(strings.ToLower(*mode), o, func(step string) { fmt.Println(step) }); err != nil {
 		fmt.Fprintln(os.Stderr, "error:", err)
-	}
-	if interactive {
-		var exitAfter time.Duration
-		if autoChosen && err == nil {
-			exitAfter = autoExitTimeout
-		}
-		setupmenu.WaitForEnter(in, os.Stdout, exitAfter)
-	}
-	if err != nil {
 		os.Exit(1)
+	}
+}
+
+// run performs one Setup action, reporting each step to progress.
+func run(action string, o options, progress func(string)) error {
+	install := func(use setup.Use) error {
+		return setup.Install(setup.InstallOptions{
+			Use:         use,
+			InstallDir:  o.installDir,
+			NoLaunch:    o.noLaunch,
+			NoAutostart: o.noAutostart,
+			Progress:    progress,
+		})
+	}
+	switch action {
+	case "background", "install":
+		return install(setup.Background)
+	case "instant":
+		return install(setup.Instant)
+	case "uninstall":
+		return setup.Uninstall(setup.UninstallOptions{
+			InstallDir: o.installDir,
+			KeepFiles:  o.keepFiles,
+			Progress:   progress,
+		})
+	}
+	return fmt.Errorf("unknown -mode %q (want background, instant or uninstall)", action)
+}
+
+var (
+	modKernel32       = windows.NewLazySystemDLL("kernel32.dll")
+	procAttachConsole = modKernel32.NewProc("AttachConsole")
+)
+
+// attachConsole makes -mode's output visible. Setup is a GUI program, so
+// Windows gives it no console of its own; unless its output is already
+// going to a pipe or file, it borrows the console of whatever started it.
+func attachConsole() {
+	if h, err := windows.GetStdHandle(windows.STD_OUTPUT_HANDLE); err == nil && h != 0 && h != windows.InvalidHandle {
+		return
+	}
+	const attachParentProcess = uintptr(^uint32(0))
+	if r, _, _ := procAttachConsole.Call(attachParentProcess); r == 0 {
+		return
+	}
+	if out, err := os.OpenFile("CONOUT$", os.O_WRONLY, 0); err == nil {
+		os.Stdout, os.Stderr = out, out
 	}
 }

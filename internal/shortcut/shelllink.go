@@ -1,6 +1,6 @@
 //go:build windows
 
-package autostart
+package shortcut
 
 import (
 	"errors"
@@ -12,10 +12,8 @@ import (
 	"golang.org/x/sys/windows"
 )
 
-// Autostart is a shortcut in the user's own Startup folder, created
-// through the shell's IShellLink COM object - the same file Explorer
-// writes when you drag a program in there. It is per-user, so nothing
-// here needs administrator rights.
+// Shortcuts are written through the shell's IShellLink COM object - the
+// same .lnk files Explorer creates.
 var (
 	modOle32             = windows.NewLazySystemDLL("ole32.dll")
 	procCoCreateInstance = modOle32.NewProc("CoCreateInstance")
@@ -96,31 +94,37 @@ func comSetUp() (func(), error) {
 	return func() {}, fmt.Errorf("CoInitializeEx: %w", err)
 }
 
-// newShellLink creates an IShellLinkW instance and returns it with its
-// vtable and a release function.
-func newShellLink() (*comObject, *iShellLinkWVtbl, func(), error) {
-	var link *comObject
+// openLink creates an IShellLinkW together with its IPersistFile, and
+// returns both with a function releasing them.
+func openLink() (link *comObject, vtbl *iShellLinkWVtbl, persist *comObject, pvtbl *iPersistFileVtbl, release func(), err error) {
 	if hr, _, _ := procCoCreateInstance.Call(
 		uintptr(unsafe.Pointer(&clsidShellLink)), 0, clsctxInprocServer,
 		uintptr(unsafe.Pointer(&iidShellLinkW)), uintptr(unsafe.Pointer(&link))); hr != 0 {
-		return nil, nil, nil, fmt.Errorf("CoCreateInstance(ShellLink): 0x%08X", hr)
+		return nil, nil, nil, nil, nil, fmt.Errorf("CoCreateInstance(ShellLink): 0x%08X", hr)
 	}
-	return link, (*iShellLinkWVtbl)(unsafe.Pointer(link.vtbl)), link.release, nil
+	vtbl = (*iShellLinkWVtbl)(unsafe.Pointer(link.vtbl))
+	if hr, _, _ := syscall.SyscallN(vtbl.QueryInterface,
+		uintptr(unsafe.Pointer(link)), uintptr(unsafe.Pointer(&iidPersistFile)), uintptr(unsafe.Pointer(&persist))); hr != 0 {
+		link.release()
+		return nil, nil, nil, nil, nil, fmt.Errorf("IShellLink::QueryInterface(IPersistFile): 0x%08X", hr)
+	}
+	pvtbl = (*iPersistFileVtbl)(unsafe.Pointer(persist.vtbl))
+	return link, vtbl, persist, pvtbl, func() { persist.release(); link.release() }, nil
 }
 
-// createShortcut writes a .lnk at lnkPath pointing at target.
-func createShortcut(lnkPath, target, description string) error {
+// createShortcut writes a .lnk at lnkPath that runs target with args.
+func createShortcut(lnkPath, target, args, description string) error {
 	comDone, err := comSetUp()
 	if err != nil {
 		return err
 	}
 	defer comDone()
 
-	link, vtbl, releaseLink, err := newShellLink()
+	link, vtbl, persist, pvtbl, release, err := openLink()
 	if err != nil {
 		return err
 	}
-	defer releaseLink()
+	defer release()
 
 	set := func(method uintptr, name, value string) error {
 		p, err := windows.UTF16PtrFromString(value)
@@ -132,70 +136,63 @@ func createShortcut(lnkPath, target, description string) error {
 		}
 		return nil
 	}
-	if err := set(vtbl.SetPath, "SetPath", target); err != nil {
-		return err
+	for _, s := range []struct {
+		method      uintptr
+		name, value string
+	}{
+		{vtbl.SetPath, "SetPath", target},
+		{vtbl.SetArguments, "SetArguments", args},
+		{vtbl.SetWorkingDirectory, "SetWorkingDirectory", filepath.Dir(target)},
+		{vtbl.SetDescription, "SetDescription", description},
+	} {
+		if err := set(s.method, s.name, s.value); err != nil {
+			return err
+		}
 	}
-	if err := set(vtbl.SetWorkingDirectory, "SetWorkingDirectory", filepath.Dir(target)); err != nil {
-		return err
-	}
-	if err := set(vtbl.SetDescription, "SetDescription", description); err != nil {
-		return err
-	}
-
-	var persist *comObject
-	if hr, _, _ := syscall.SyscallN(vtbl.QueryInterface,
-		uintptr(unsafe.Pointer(link)), uintptr(unsafe.Pointer(&iidPersistFile)), uintptr(unsafe.Pointer(&persist))); hr != 0 {
-		return fmt.Errorf("IShellLink::QueryInterface(IPersistFile): 0x%08X", hr)
-	}
-	defer persist.release()
 
 	lnkPtr, err := windows.UTF16PtrFromString(lnkPath)
 	if err != nil {
 		return err
 	}
-	persistVtbl := (*iPersistFileVtbl)(unsafe.Pointer(persist.vtbl))
-	if hr, _, _ := syscall.SyscallN(persistVtbl.Save,
+	if hr, _, _ := syscall.SyscallN(pvtbl.Save,
 		uintptr(unsafe.Pointer(persist)), uintptr(unsafe.Pointer(lnkPtr)), 1); hr != 0 {
 		return fmt.Errorf("IPersistFile::Save(%s): 0x%08X", lnkPath, hr)
 	}
 	return nil
 }
 
-// shortcutTarget reads back the program a .lnk points at.
-func shortcutTarget(lnkPath string) (string, error) {
+// shortcutTarget reads back the program a .lnk runs and its arguments.
+func shortcutTarget(lnkPath string) (target, args string, err error) {
 	comDone, err := comSetUp()
 	if err != nil {
-		return "", err
+		return "", "", err
 	}
 	defer comDone()
 
-	link, vtbl, releaseLink, err := newShellLink()
+	link, vtbl, persist, pvtbl, release, err := openLink()
 	if err != nil {
-		return "", err
+		return "", "", err
 	}
-	defer releaseLink()
-
-	var persist *comObject
-	if hr, _, _ := syscall.SyscallN(vtbl.QueryInterface,
-		uintptr(unsafe.Pointer(link)), uintptr(unsafe.Pointer(&iidPersistFile)), uintptr(unsafe.Pointer(&persist))); hr != 0 {
-		return "", fmt.Errorf("IShellLink::QueryInterface(IPersistFile): 0x%08X", hr)
-	}
-	defer persist.release()
+	defer release()
 
 	lnkPtr, err := windows.UTF16PtrFromString(lnkPath)
 	if err != nil {
-		return "", err
+		return "", "", err
 	}
-	persistVtbl := (*iPersistFileVtbl)(unsafe.Pointer(persist.vtbl))
-	if hr, _, _ := syscall.SyscallN(persistVtbl.Load,
+	if hr, _, _ := syscall.SyscallN(pvtbl.Load,
 		uintptr(unsafe.Pointer(persist)), uintptr(unsafe.Pointer(lnkPtr)), stgmRead); hr != 0 {
-		return "", fmt.Errorf("IPersistFile::Load(%s): 0x%08X", lnkPath, hr)
+		return "", "", fmt.Errorf("IPersistFile::Load(%s): 0x%08X", lnkPath, hr)
 	}
 
-	buf := make([]uint16, windows.MAX_PATH)
+	path := make([]uint16, windows.MAX_PATH)
 	if hr, _, _ := syscall.SyscallN(vtbl.GetPath,
-		uintptr(unsafe.Pointer(link)), uintptr(unsafe.Pointer(&buf[0])), uintptr(len(buf)), 0, 0); hr != 0 {
-		return "", fmt.Errorf("IShellLink::GetPath: 0x%08X", hr)
+		uintptr(unsafe.Pointer(link)), uintptr(unsafe.Pointer(&path[0])), uintptr(len(path)), 0, 0); hr != 0 {
+		return "", "", fmt.Errorf("IShellLink::GetPath: 0x%08X", hr)
 	}
-	return windows.UTF16ToString(buf), nil
+	arguments := make([]uint16, 1024)
+	if hr, _, _ := syscall.SyscallN(vtbl.GetArguments,
+		uintptr(unsafe.Pointer(link)), uintptr(unsafe.Pointer(&arguments[0])), uintptr(len(arguments))); hr != 0 {
+		return "", "", fmt.Errorf("IShellLink::GetArguments: 0x%08X", hr)
+	}
+	return windows.UTF16ToString(path), windows.UTF16ToString(arguments), nil
 }

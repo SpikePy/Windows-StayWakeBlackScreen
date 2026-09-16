@@ -1,15 +1,12 @@
 //go:build windows
 
-// Package setup implements the install and uninstall actions shared by
-// Setup_StayWakeBlackScreenIdle.exe: downloading and registering
-// StayWakeBlackScreenIdle.exe for autostart, and reversing that -
-// removing the autostart entry, stopping any running copy, and deleting
-// the installed files.
+// Package setup implements what Setup_StayWakeBlackScreen.exe does:
+// installing StayWakeBlackScreen.exe for either of its two uses - the idle
+// guard that starts in the background at sign-in, or the instant black
+// screen opened from the Start menu - and uninstalling it again.
 package setup
 
 import (
-	"bytes"
-	"encoding/json"
 	"fmt"
 	"os"
 	"os/exec"
@@ -20,23 +17,30 @@ import (
 
 	"golang.org/x/sys/windows"
 
-	"windows-stay-wake-black-screen/internal/autostart"
 	"windows-stay-wake-black-screen/internal/config"
+	"windows-stay-wake-black-screen/internal/shortcut"
 )
 
 const (
-	repoOwner = "SpikePy"
-	repoName  = "Windows-StayWakeBlackScreen"
+	// appName is both the release asset and the installed exe.
+	appName = "StayWakeBlackScreen.exe"
 
-	// idleAssetName and mainAssetName are the release asset / installed
-	// exe names for the two blackout programs. Only the idle variant is
-	// ever downloaded and autostarted; the plain variant is left as a
-	// manual tool, but Uninstall still stops it if it happens to be
-	// running.
-	idleAssetName = "StayWakeBlackScreenIdle.exe"
-	mainAssetName = "StayWakeBlackScreen.exe"
+	// legacyIdleName is the separate idle program that versions before 2.0
+	// installed alongside it; Setup stops and deletes it.
+	legacyIdleName = "StayWakeBlackScreenIdle.exe"
 
 	userAgent = "stay-wake-setup"
+)
+
+// Use is what the program gets installed for.
+type Use int
+
+const (
+	// Background is the idle guard: started right after installing, and
+	// at every sign-in through the Startup shortcut.
+	Background Use = iota
+	// Instant is a Start menu entry that blacks out the screen when opened.
+	Instant
 )
 
 // resolveInstallDir returns dir, or %LOCALAPPDATA%\StayWakeBlackScreen if
@@ -52,34 +56,24 @@ func resolveInstallDir(dir string) (string, error) {
 	return filepath.Join(base, "StayWakeBlackScreen"), nil
 }
 
-type ghAsset struct {
-	Name               string `json:"name"`
-	BrowserDownloadURL string `json:"browser_download_url"`
-}
-
-type ghRelease struct {
-	TagName string    `json:"tag_name"`
-	Assets  []ghAsset `json:"assets"`
-}
-
 // InstallOptions configures Install.
 type InstallOptions struct {
-	InstallDir  string // defaults to %LOCALAPPDATA%\StayWakeBlackScreen if empty
-	GitHubToken string // optional, avoids the unauthenticated API rate limit
-	NoLaunch    bool   // install/update without starting it now
-	NoAutostart bool   // leave the Startup shortcut as it is instead of applying the autostart setting
+	Use         Use
+	InstallDir  string            // defaults to %LOCALAPPDATA%\StayWakeBlackScreen if empty
+	NoLaunch    bool              // Background: don't start the guard now
+	NoAutostart bool              // leave the autostart setting and Startup shortcut as they are
+	Progress    func(step string) // told about each step as it starts; may be nil
 }
 
-// Install downloads the latest released StayWakeBlackScreenIdle.exe,
-// installs it under the current user's %LOCALAPPDATA%, sets up autostart
-// the way config.yaml's autostart setting says, and (re)starts it -
-// terminating any already-running copy first so the file can be replaced
-// and so at most one copy is ever running at a time. Safe to re-run to
-// update in place: it always ends up with at most one Startup shortcut
-// (re-running replaces it, never adds a second) and exactly one running
-// instance (the app itself also refuses to start a second copy via a named
-// mutex - see internal/singleinstance - so this is belt and suspenders).
+// Install downloads the latest released StayWakeBlackScreen.exe, installs
+// it under the current user's %LOCALAPPDATA%, and sets it up for the chosen
+// use. For Background it turns the autostart setting on, keeps the Startup
+// shortcut in line with it and starts the guard; for Instant it turns
+// autostart off and adds the Start menu entry instead. Any running copy is
+// stopped first so the file can be replaced, and re-running replaces
+// shortcuts rather than adding second ones, so it doubles as the update.
 func Install(opts InstallOptions) error {
+	progress := reporter(opts.Progress)
 	installDir, err := resolveInstallDir(opts.InstallDir)
 	if err != nil {
 		return err
@@ -87,126 +81,127 @@ func Install(opts InstallOptions) error {
 	if err := os.MkdirAll(installDir, 0o755); err != nil {
 		return fmt.Errorf("creating install dir: %w", err)
 	}
-	targetPath := filepath.Join(installDir, idleAssetName)
+	target := filepath.Join(installDir, appName)
 
-	fmt.Printf("Looking up latest release of %s/%s...\n", repoOwner, repoName)
-	rel, err := latestRelease(opts.GitHubToken)
-	if err != nil {
-		return fmt.Errorf("fetching latest release: %w", err)
+	// The version is only shown, so failing to learn it isn't fatal; the
+	// download below reports any real network problem.
+	progress("Looking up the latest release...")
+	if tag, err := latestTag(); err == nil {
+		progress(fmt.Sprintf("Downloading StayWakeBlackScreen %s...", tag))
+	} else {
+		progress("Downloading the latest StayWakeBlackScreen...")
 	}
-	var downloadURL string
-	for _, a := range rel.Assets {
-		if strings.EqualFold(a.Name, idleAssetName) {
-			downloadURL = a.BrowserDownloadURL
-			break
+	tmpPath := target + ".download"
+	if err := downloadFile(latestAssetURL(appName), tmpPath); err != nil {
+		return fmt.Errorf("downloading: %w", err)
+	}
+
+	progress("Stopping StayWakeBlackScreen if it's running...")
+	for _, exe := range []string{appName, legacyIdleName} {
+		if err := terminateRunning(exe); err != nil {
+			os.Remove(tmpPath)
+			return fmt.Errorf("stopping %s: %w", exe, err)
 		}
 	}
-	if downloadURL == "" {
-		return fmt.Errorf("release %s has no asset named %s", rel.TagName, idleAssetName)
-	}
-	fmt.Printf("Downloading %s (%s)...\n", rel.TagName, downloadURL)
 
-	tmpPath := targetPath + ".download"
-	if err := downloadFile(downloadURL, tmpPath); err != nil {
-		return fmt.Errorf("downloading asset: %w", err)
-	}
-
-	fmt.Println("Stopping any already-running instance...")
-	if err := terminateRunning(idleAssetName); err != nil {
-		os.Remove(tmpPath)
-		return fmt.Errorf("stopping running instance: %w", err)
-	}
-
-	fmt.Printf("Installing to %s...\n", targetPath)
-	if err := replaceFile(tmpPath, targetPath); err != nil {
+	progress("Installing to " + installDir + "...")
+	if err := replaceFile(tmpPath, target); err != nil {
 		return fmt.Errorf("installing: %w", err)
 	}
+	if err := os.Remove(filepath.Join(installDir, legacyIdleName)); err != nil && !os.IsNotExist(err) {
+		return fmt.Errorf("removing the old idle program: %w", err)
+	}
 
+	background := opts.Use == Background
 	if !opts.NoAutostart {
-		// A config.yaml that can't be read still yields the defaults,
-		// which have autostart on.
-		cfg, err := config.Load()
-		if err != nil {
-			fmt.Printf("Warning: %v - using the default settings.\n", err)
-		}
-		if cfg.Autostart {
-			fmt.Println("Adding the Startup shortcut (autostart: true)...")
+		if background {
+			progress("Turning on autostart...")
 		} else {
-			fmt.Println("Removing the Startup shortcut (autostart: false in config.yaml)...")
+			progress("Turning off autostart...")
 		}
-		if err := autostart.Apply(cfg.Autostart, targetPath); err != nil {
+		if err := config.SetAutostart(background); err != nil {
+			return fmt.Errorf("updating config.yaml: %w", err)
+		}
+		if err := shortcut.SyncAutostart(background, target); err != nil {
 			return fmt.Errorf("updating autostart: %w", err)
 		}
 	}
 
-	if !opts.NoLaunch {
-		fmt.Println("Starting it now...")
-		if err := exec.Command(targetPath).Start(); err != nil {
-			return fmt.Errorf("starting %s: %w", targetPath, err)
+	progress("Updating the Start menu...")
+	if err := shortcut.SetStartMenu(!background, target); err != nil {
+		return fmt.Errorf("updating the Start menu: %w", err)
+	}
+
+	if background && !opts.NoLaunch {
+		progress("Starting the idle guard...")
+		if err := exec.Command(target, shortcut.BackgroundArg).Start(); err != nil {
+			return fmt.Errorf("starting %s: %w", target, err)
 		}
 	}
 
-	fmt.Println("Done.")
+	progress("Done.")
 	return nil
 }
 
 // UninstallOptions configures Uninstall.
 type UninstallOptions struct {
-	InstallDir string // defaults to %LOCALAPPDATA%\StayWakeBlackScreen if empty
-	KeepFiles  bool   // remove autostart and stop the process, but leave the installed files in place
+	InstallDir string            // defaults to %LOCALAPPDATA%\StayWakeBlackScreen if empty
+	KeepFiles  bool              // remove the shortcuts and stop the program, but leave the installed files in place
+	Progress   func(step string) // told about each step as it starts; may be nil
 }
 
-// Uninstall reverses Install: removes the Startup shortcut,
-// terminates any running copy of StayWakeBlackScreenIdle.exe or
-// StayWakeBlackScreen.exe, and (unless KeepFiles) deletes the installed
-// files.
+// Uninstall reverses Install: removes both shortcuts (and what older
+// versions used for autostart), stops any running copy - including the
+// pre-2.0 idle program - and, unless KeepFiles, deletes the installed
+// files together with config.yaml.
 func Uninstall(opts UninstallOptions) error {
+	progress := reporter(opts.Progress)
 	installDir, err := resolveInstallDir(opts.InstallDir)
 	if err != nil {
 		return err
 	}
 
-	fmt.Println("Removing the Startup shortcut...")
-	if err := autostart.Remove(); err != nil {
+	progress("Removing the shortcuts...")
+	if err := shortcut.SyncAutostart(false, ""); err != nil {
 		return fmt.Errorf("removing autostart: %w", err)
 	}
+	if err := shortcut.SetStartMenu(false, ""); err != nil {
+		return fmt.Errorf("removing the Start menu entry: %w", err)
+	}
 
-	fmt.Println("Stopping any running instance...")
-	for _, exe := range []string{idleAssetName, mainAssetName} {
+	progress("Stopping StayWakeBlackScreen if it's running...")
+	for _, exe := range []string{appName, legacyIdleName} {
 		if err := terminateRunning(exe); err != nil {
 			return fmt.Errorf("stopping %s: %w", exe, err)
 		}
 	}
 
 	if !opts.KeepFiles {
-		fmt.Printf("Removing %s...\n", installDir)
+		progress("Removing " + installDir + "...")
 		if err := os.RemoveAll(installDir); err != nil {
 			return fmt.Errorf("removing %s: %w", installDir, err)
 		}
 	}
 
-	fmt.Println("Done.")
+	progress("Done.")
 	return nil
 }
 
-// latestRelease looks up the newest release through the GitHub API. The
-// token, if any, is only ever sent here: it's what the API rate limit
-// applies to, and the asset download itself needs no authentication.
-func latestRelease(token string) (*ghRelease, error) {
-	headers := []string{"Accept: application/vnd.github+json"}
-	if token != "" {
-		headers = append(headers, "Authorization: Bearer "+token)
+func reporter(progress func(string)) func(string) {
+	if progress == nil {
+		return func(string) {}
 	}
-	var body bytes.Buffer
-	url := fmt.Sprintf("https://api.github.com/repos/%s/%s/releases/latest", repoOwner, repoName)
-	if err := httpGet(url, headers, &body); err != nil {
-		return nil, fmt.Errorf("GitHub API: %w", err)
+	return progress
+}
+
+// latestTag returns the newest release's tag, read from where GitHub's
+// "latest release" page redirects to - no GitHub API involved.
+func latestTag() (string, error) {
+	location, err := redirectTarget(latestPageURL())
+	if err != nil {
+		return "", err
 	}
-	var rel ghRelease
-	if err := json.Unmarshal(body.Bytes(), &rel); err != nil {
-		return nil, err
-	}
-	return &rel, nil
+	return tagFromLocation(location)
 }
 
 // downloadFile saves url's content to destPath, removing the file again

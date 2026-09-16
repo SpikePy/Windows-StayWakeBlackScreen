@@ -14,6 +14,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"regexp"
 	"strconv"
 	"strings"
 )
@@ -47,9 +48,14 @@ heartbeat_seconds: %d
 # enabled from the tray menu (false).
 start_enabled: %t
 
-# autostart: whether the program starts by itself when you sign in to
-# Windows (true), through a shortcut in your Startup folder, or not
-# (false). Applied the next time the program starts.
+` + autostartBlock
+
+// autostartBlock ends the template, and SetAutostart appends it to a
+// config.yaml written before the setting existed.
+const autostartBlock = `# autostart: whether the idle guard starts in the background when you
+# sign in to Windows (true), through a shortcut in your Startup folder, or
+# not (false). Setup sets it to match what you chose to install. Applied
+# the next time the program starts.
 autostart: %t
 `
 
@@ -168,6 +174,48 @@ func parseBool(s string) (bool, error) {
 		return false, nil
 	}
 	return false, fmt.Errorf("%q is not true or false", s)
+}
+
+// SetAutostart writes the autostart setting into config.yaml, creating
+// the file with defaults first if there is none. Only the setting's own
+// line changes; a file from before the setting existed gets it appended,
+// with its comment.
+func SetAutostart(enabled bool) error {
+	path, err := Path()
+	if err != nil {
+		return err
+	}
+	data, err := os.ReadFile(path)
+	if os.IsNotExist(err) {
+		text := fmt.Sprintf(template, DefaultIdleMinutes, DefaultHeartbeatSeconds, DefaultStartEnabled, enabled)
+		return os.WriteFile(path, []byte(text), 0o644)
+	}
+	if err != nil {
+		return fmt.Errorf("reading config.yaml: %w", err)
+	}
+	return os.WriteFile(path, setAutostartIn(data, enabled), 0o644)
+}
+
+// autostartLine matches the setting itself, not a comment mentioning it.
+var autostartLine = regexp.MustCompile(`(?m)^[ \t]*autostart[ \t]*:[^\r\n]*`)
+
+// setAutostartIn returns data with its autostart line set to enabled,
+// keeping the file's line endings, and appends the setting if data has
+// none.
+func setAutostartIn(data []byte, enabled bool) []byte {
+	if autostartLine.Match(data) {
+		return autostartLine.ReplaceAllLiteral(data, []byte(fmt.Sprintf("autostart: %t", enabled)))
+	}
+	nl := "\n"
+	if strings.Contains(string(data), "\r\n") {
+		nl = "\r\n"
+	}
+	block := strings.ReplaceAll(fmt.Sprintf(autostartBlock, enabled), "\n", nl)
+	text := strings.TrimRight(string(data), "\r\n")
+	if text == "" {
+		return []byte(block)
+	}
+	return []byte(text + nl + nl + block)
 }
 
 // Path returns the config.yaml path, creating its containing directory

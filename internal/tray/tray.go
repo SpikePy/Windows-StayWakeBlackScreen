@@ -85,8 +85,9 @@ const trayWindowClassName = "StayWakeTrayHiddenWindow"
 // window and runs its message loop (NewWindow, SetIcon, RemoveIcon, and
 // wndProcCB, which that loop dispatches), so no locking is needed.
 var (
-	onLeftClick  func()
-	onRightClick func()
+	onLeftClick   func()
+	onRightClick  func()
+	onBlackoutNow func()
 
 	// taskbarCreated is the "TaskbarCreated" message Explorer broadcasts
 	// whenever it (re)starts. By then every tray icon it showed is gone,
@@ -112,6 +113,11 @@ var (
 				cb()
 			}
 			return 0
+		case message == win32.WMBlackoutNow:
+			if onBlackoutNow != nil {
+				onBlackoutNow()
+			}
+			return 0
 		case taskbarCreated != 0 && message == taskbarCreated:
 			if shown.hwnd != 0 {
 				shown.added = false
@@ -124,11 +130,13 @@ var (
 )
 
 // NewWindow creates a hidden window that owns the tray icon and any popup
-// menu, and wires left/right click callbacks. It must be created on, and
-// its messages pumped from, the same OS thread for the lifetime of the
-// program (see runtime.LockOSThread in main).
-func NewWindow(left, right func()) (uintptr, error) {
-	onLeftClick, onRightClick = left, right
+// menu, and wires its callbacks: left and right clicks on the icon, and a
+// black-screen request from another copy of the program (see
+// RequestBlackout). It must be created on, and its messages pumped from,
+// the same OS thread for the lifetime of the program (see
+// runtime.LockOSThread in main).
+func NewWindow(left, right, blackoutNow func()) (uintptr, error) {
+	onLeftClick, onRightClick, onBlackoutNow = left, right, blackoutNow
 	if r, _, _ := procRegisterWindowMessageW.Call(uintptr(unsafe.Pointer(win32.UTF16Ptr("TaskbarCreated")))); r != 0 {
 		taskbarCreated = uint32(r)
 	}
@@ -140,13 +148,24 @@ func NewWindow(left, right func()) (uintptr, error) {
 	// own the notify icon and receive its callback messages. It must stay
 	// a normal top-level window, not a message-only one, to receive the
 	// TaskbarCreated broadcast.
-	return win32.CreateWindow(0, wsOverlappedWindow, trayWindowClassName, "StayWakeBlackScreenIdle",
+	return win32.CreateWindow(0, wsOverlappedWindow, trayWindowClassName, "StayWakeBlackScreen",
 		win32.CWUseDefault, win32.CWUseDefault, win32.CWUseDefault, win32.CWUseDefault)
 }
 
 // DestroyWindow destroys a window created by NewWindow. Safe to call on a
 // zero handle.
 func DestroyWindow(hwnd uintptr) { win32.DestroyWindow(hwnd) }
+
+// RequestBlackout asks a background guard running in another process to
+// black out the screen now, and reports whether there was one to ask.
+func RequestBlackout() bool {
+	hwnd := win32.FindWindow(trayWindowClassName)
+	if hwnd == 0 {
+		return false
+	}
+	win32.PostMessage(hwnd, win32.WMBlackoutNow, 0, 0)
+	return true
+}
 
 func newNotifyIconData(hwnd, hIcon uintptr, tooltip string) notifyIconDataW {
 	var nid notifyIconDataW

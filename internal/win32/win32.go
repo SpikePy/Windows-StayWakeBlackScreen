@@ -25,6 +25,8 @@ var (
 	procDestroyWindow       = modUser32.NewProc("DestroyWindow")
 	procSetForegroundWindow = modUser32.NewProc("SetForegroundWindow")
 	procPostMessageW        = modUser32.NewProc("PostMessageW")
+	procSendMessageW        = modUser32.NewProc("SendMessageW")
+	procFindWindowW         = modUser32.NewProc("FindWindowW")
 )
 
 // Message numbers from WM_APP upward are free for application use.
@@ -38,6 +40,11 @@ const (
 	// WMEscapePressed is posted by the input hook to the thread running a
 	// blackout when Escape is pressed.
 	WMEscapePressed = wmApp + 2
+
+	// WMBlackoutNow is posted to the running background guard's tray
+	// window by a copy of the program opened for an instant black screen,
+	// so the guard blacks out instead of a second blackout starting.
+	WMBlackoutNow = wmApp + 3
 )
 
 // CWUseDefault is CW_USEDEFAULT, for CreateWindow's position and size.
@@ -134,4 +141,18 @@ func DefWindowProc(hwnd uintptr, msg uint32, wParam, lParam uintptr) uintptr {
 // queue if hwnd is 0.
 func PostMessage(hwnd uintptr, msg uint32, wParam, lParam uintptr) {
 	procPostMessageW.Call(hwnd, uintptr(msg), wParam, lParam)
+}
+
+// SendMessage sends msg to hwnd and waits until it has been handled,
+// returning the window procedure's result.
+func SendMessage(hwnd uintptr, msg uint32, wParam, lParam uintptr) uintptr {
+	r, _, _ := procSendMessageW.Call(hwnd, uintptr(msg), wParam, lParam)
+	return r
+}
+
+// FindWindow returns the top-level window of the given class, hidden or
+// not, or 0 if there is none.
+func FindWindow(class string) uintptr {
+	r, _, _ := procFindWindowW.Call(uintptr(unsafe.Pointer(UTF16Ptr(class))), 0)
+	return r
 }

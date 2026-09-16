@@ -3,102 +3,107 @@
 Full reference for Windows StayWakeBlackScreen. See [README.md](README.md)
 for the overview and quick start.
 
-## Programs
+## The program
 
-### `StayWakeBlackScreen.exe`
+`StayWakeBlackScreen.exe` has two modes, chosen by how it is started.
 
-Blacks out every screen and blocks **all** keyboard and mouse input
-system-wide immediately when run. The only way out is the **Escape** key.
+### Instant black screen
 
 ```
 StayWakeBlackScreen.exe
 StayWakeBlackScreen.exe -heartbeat-seconds 5 -enable-logging
 ```
 
-### `StayWakeBlackScreenIdle.exe`
+Blacks out every screen and blocks **all** keyboard and mouse input
+system-wide the moment it runs. **Escape** ends the black screen and the
+program exits. This is what its Start menu entry does.
+
+If the idle guard is already running, the program doesn't start a second
+blackout: it asks the guard to black out now and exits, so there is only
+ever one black screen and one Escape to press. The guard does this even
+while it's disabled from its tray menu, and stays disabled afterwards.
+
+### Idle guard
+
+```
+StayWakeBlackScreen.exe -background
+StayWakeBlackScreen.exe -background -idle-minutes 3 -heartbeat-seconds 5 -enable-logging
+```
 
 Runs quietly in the background — no black screen, no input blocking, and
 a tray icon — preventing sleep/lock, until the PC has been genuinely idle
 (no real keyboard/mouse activity) for `idle_minutes` (default 3). At that
-point it blacks out and blocks input exactly like the program above.
-Pressing **Escape** dismisses the blackout and restores input, but it
-keeps running and the idle countdown restarts — it will black out again
-after another idle period, indefinitely.
+point it blacks out and blocks input exactly like the instant mode.
+Pressing **Escape** dismisses the blackout and restores input, but the
+guard keeps running and the idle countdown restarts — it will black out
+again after another idle period, indefinitely. The Startup shortcut
+starts it this way at sign-in.
+
+The tray icon is a monitor glyph while enabled and the same glyph greyed
+out with a red strike while disabled. Left-click toggles it; right-click
+opens Enable, Disable, Configure (opens `config.yaml` in its default
+editor) and Exit. The guard doesn't exit on its own otherwise: use
+*Exit*, Task Manager/`taskkill`, or Setup, which stops it when updating
+or uninstalling.
+
+### Flags
+
+| Flag | Mode | Meaning |
+| --- | --- | --- |
+| `-background` | — | Run as the idle guard instead of blacking out at once. |
+| `-idle-minutes N` | idle guard | Overrides `idle_minutes`. |
+| `-heartbeat-seconds N` | both | Overrides `heartbeat_seconds`. |
+| `-start-enabled=false` | idle guard | Overrides `start_enabled`. |
+| `-autostart=false` | both | Overrides `autostart` for this run. |
+| `-enable-logging` | both | Writes `StayWakeBlackScreen.log` next to the exe. |
+
+## Setup
+
+`Setup_StayWakeBlackScreen.exe` opens a small Windows dialog with three
+choices and does nothing until you pick one:
+
+- **Idle guard** installs the program, turns the `autostart` setting on,
+  adds the Startup shortcut (which passes `-background`), removes the
+  Start menu entry and starts the guard.
+- **Instant black screen** installs the program, turns `autostart` off,
+  removes the Startup shortcut and adds a Start menu entry that opens the
+  program without arguments. It doesn't start the program — that would
+  black out the screen in the middle of setup.
+- **Uninstall** removes both shortcuts, stops the program and deletes
+  `%LOCALAPPDATA%\StayWakeBlackScreen\`, including `config.yaml`.
+
+It then shows its progress and the result. Choosing again later updates
+the program or switches between the two uses. Setup always installs the
+latest release - found through GitHub's plain release links, not the
+GitHub API, so there's no API rate limit to run into - stops any running copy before replacing the file, and
+clears out what versions before 2.0 left behind: the separate
+`StayWakeBlackScreenIdle.exe`, its Startup shortcut, and the registry
+value even older versions used for autostart.
+
+Everything is per-user, so nothing — install, autostart or uninstall —
+needs administrator rights. Setup's manifest says so explicitly, which
+also stops Windows from asking for elevation just because the file is
+called "Setup".
+
+For scripts, `-mode` runs one action without the dialog and prints its
+steps to the console it was started from (exit code 1 on failure):
 
 ```
-StayWakeBlackScreenIdle.exe
-StayWakeBlackScreenIdle.exe -idle-minutes 3 -heartbeat-seconds 5 -enable-logging
+Setup_StayWakeBlackScreen.exe -mode background    (or -mode install)
+Setup_StayWakeBlackScreen.exe -mode instant
+Setup_StayWakeBlackScreen.exe -mode uninstall
 ```
 
-This program does not exit on its own. To stop it: the tray menu's
-*Exit*, Task Manager/`taskkill`, or the installer (which does this
-automatically when updating).
-
-### `Setup_StayWakeBlackScreenIdle.exe`
-
-Run it with no arguments (e.g. double-click it) and it shows an
-interactive menu:
-
-```
-Windows StayWakeBlackScreen - Setup
-
-  1) Install / update
-  2) Uninstall
-
-Choose an option [1-2] (installing/updating automatically in 5 seconds if nothing is chosen):
-```
-
-If nothing is chosen within 5 seconds of the first prompt, it goes ahead
-with **Install / update** on its own — so double-clicking it and walking
-away still gets the tool installed/updated. Typing anything (even an
-invalid choice) cancels the countdown for the rest of that run. When the
-action was auto-chosen this way, the window also closes itself 3 seconds
-after finishing (instead of waiting for Enter) — nobody was there to
-pick it, so there's likely nobody there to dismiss it either. If that
-unattended run fails, though, the window stays open and waits for Enter,
-so the error is still on screen when you come back.
-
-**Install / update** downloads the latest released
-`StayWakeBlackScreenIdle.exe`, installs it to
-`%LOCALAPPDATA%\StayWakeBlackScreen\`, sets up autostart, and
-(re)starts it — stopping any already-running copy first so the
-file can be replaced. Autostart is a shortcut in your own Startup folder
-(`%APPDATA%\Microsoft\Windows\Start Menu\Programs\Startup`), present only
-while the `autostart` setting is `true` (the default); Setup adds or
-removes it to match. You can see it in Explorer, and nothing here — install, autostart or
-uninstall — needs administrator rights. Safe to re-run any time to
-update: it always ends up with at most **one** Startup shortcut (it is
-replaced, never duplicated, and an autostart registry value
-left behind by an older version is removed) and exactly **one** running
-instance:
-
-- Setup terminates any already-running copy before replacing the file
-  and starting the new one.
-- `StayWakeBlackScreenIdle.exe` also refuses to start a second copy of
-  itself, via a named mutex — belt and suspenders even if it's ever
-  launched some other way while already running.
-
-It only ever downloads the idle variant (`StayWakeBlackScreenIdle.exe`)
-— `StayWakeBlackScreen.exe` is left as a manual, run-when-you-want-it
-tool.
-
-**Uninstall** removes the Startup shortcut (and the autostart registry
-value older versions used), stops any running copy of
-`StayWakeBlackScreenIdle.exe` or `StayWakeBlackScreen.exe`, and deletes
-the installed files.
-
-For scripted use, `-mode install` or `-mode uninstall` skips the menu
-entirely. Other flags: `-install-dir <path>` (override the install
-location), `-github-token <token>` (avoid GitHub's unauthenticated API
-rate limit, install only), `-no-launch` (install/update without starting
-it now, install only), `-no-autostart` (leave the Startup shortcut as it
-is instead of applying the `autostart` setting, install only), `-keep-files` (remove autostart and stop the process, but leave
-the installed files in place, uninstall only).
+Other flags: `-install-dir <path>` (override the install location),
+`-no-launch` (don't start the idle guard after installing it),
+`-no-autostart` (leave the `autostart` setting and Startup shortcut as
+they are), `-keep-files` (uninstall: remove the shortcuts and stop the
+program, but keep the files).
 
 ## Settings reference
 
-`StayWakeBlackScreenIdle.exe` creates
-`%LOCALAPPDATA%\StayWakeBlackScreen\config.yaml` on first run:
+The program creates `%LOCALAPPDATA%\StayWakeBlackScreen\config.yaml` on
+first run:
 
 ```yaml
 idle_minutes: 3
@@ -109,15 +114,14 @@ autostart: true
 
 | Option | Default | Description |
 | --- | --- | --- |
-| `idle_minutes` | `3` | Minutes of inactivity (no real keyboard/mouse input) before the screen blacks out. |
+| `idle_minutes` | `3` | Minutes of inactivity (no real keyboard/mouse input) before the idle guard blacks out the screen. |
 | `heartbeat_seconds` | `5` | While blacked out, how often (seconds) the program toggles Caps Lock as a harmless "still alive" signal that keeps Windows from treating the session as idle. |
-| `start_enabled` | `true` | Whether the idle guard is active as soon as the program starts. Set to `false` to start paused — no sleep blocking, no blackout — until enabled from the tray menu. |
-| `autostart` | `true` | Whether the program starts by itself when you sign in, through a shortcut in your Startup folder. The installed program adds or removes that shortcut to match every time it starts, so a change applies on the next start. |
+| `start_enabled` | `true` | Whether the idle guard is active as soon as it starts. Set to `false` to start paused — no sleep blocking, no blackout — until enabled from the tray menu. |
+| `autostart` | `true` | Whether the idle guard starts in the background when you sign in, through a shortcut in your Startup folder. Setup sets it to match your choice, and the installed program adds or removes the shortcut to match every time it starts, so a change applies on the next start. |
 
 Edit a value and restart the program to apply it. Each option also has a
-matching command-line flag (`-idle-minutes`, `-heartbeat-seconds`,
-`-start-enabled`, `-autostart`) which, if passed, overrides the config file for that
-run only. Config files from older versions may still contain a
+matching command-line flag (see [Flags](#flags)) that overrides the file
+for that run only. Config files from older versions may still contain a
 `poll_ms` line; it's no longer used (nothing polls any more) and is
 ignored.
 
@@ -140,15 +144,22 @@ ignored.
   idle threshold would be reached (re-arming it for the rest if there was
   input in the meantime), and the input hook wakes the program directly
   when Escape is pressed.
-- Autostart is a shortcut in your own Startup folder, kept in line with
-  the `autostart` setting: the installed program adds or removes it every
-  time it starts (a copy run from anywhere else leaves it alone), and
-  Setup does the same on install. No registry entry is involved.
+- Opening the program while the idle guard runs doesn't stack a second
+  blackout: the new copy finds the guard's hidden tray window, posts it a
+  request, and exits; the guard blacks out itself.
+- Autostart is a shortcut in your own Startup folder that starts the
+  program with `-background`, kept in line with the `autostart` setting:
+  the installed program adds or removes it every time it starts (a copy
+  run from anywhere else leaves it alone), and Setup does the same on
+  install. No registry entry is involved.
 - The tray icon is re-added by the program itself whenever Explorer
   restarts (the `TaskbarCreated` broadcast), which otherwise wipes every
   tray icon for good.
-- Setup downloads through WinINet, Windows' own HTTP stack, so it uses
-  your system proxy settings and Windows' certificate store.
+- Setup's window is a Windows task dialog (`TaskDialogIndirect`). It
+  downloads through WinINet, Windows' own HTTP stack, so it uses your
+  system proxy settings and Windows' certificate store, from GitHub's
+  `releases/latest/download/<asset>` link; the version it shows comes from
+  where `releases/latest` redirects. It never calls the GitHub API.
 - **Ctrl+Alt+Del always remains available** — Windows never lets any hook
   suppress it — so it's a hard escape hatch no matter what else goes wrong.
 - The tray icon is drawn at runtime (no image assets) as a 32×32
@@ -157,8 +168,8 @@ ignored.
 ## Logging
 
 Off by default (nothing is written, no console output, no popups). Pass
-`-enable-logging` to write diagnostics to a `.log` file next to the exe,
-for troubleshooting only.
+`-enable-logging` to write diagnostics to `StayWakeBlackScreen.log` next
+to the exe, for troubleshooting only.
 
 ## Building from source
 
@@ -168,36 +179,34 @@ dozen lines in `internal/config` rather than a YAML library.
 
 ```
 GOOS=windows GOARCH=amd64 go build -trimpath -ldflags "-H=windowsgui -s -w" -o StayWakeBlackScreen.exe ./cmd/staywakeblackscreen
-GOOS=windows GOARCH=amd64 go build -trimpath -ldflags "-H=windowsgui -s -w" -o StayWakeBlackScreenIdle.exe ./cmd/staywakeblackscreenidle
-GOOS=windows GOARCH=amd64 go build -trimpath -ldflags "-s -w" -o Setup_StayWakeBlackScreenIdle.exe ./cmd/stay-wake-setup
+GOOS=windows GOARCH=amd64 go build -trimpath -ldflags "-H=windowsgui -s -w" -o Setup_StayWakeBlackScreen.exe ./cmd/stay-wake-setup
 ```
 
 Run the tests with `go test ./...`. They cover the OS-independent parts
-(config loading, the icon glyph and generator, the Setup menu, and the
-timing limits) and run on any platform.
+(config loading and editing, the icon glyph and generator, and the timing
+limits) and run on any platform; the shortcut code has additional
+Windows-only tests.
 
-`StayWakeBlackScreenIdle.exe`'s tray tooltip shows a version string,
-stamped in via `-X main.version=v1.2.3` appended to its `-ldflags` (the
-release build does this from the pushed tag); a build without it just
+Both programs show a version string — the tray tooltip and Setup's
+footer — stamped in via `-X main.version=v1.2.3` appended to `-ldflags`
+(the release build does this from the pushed tag); a build without it
 shows `dev`.
 
-`-H=windowsgui` is what makes the two blackout programs run without a
-console window; the setup tool is left as a normal console program so
-its progress (and menu) is visible when run from a terminal.
+`-H=windowsgui` means neither program opens a console window. Setup's
+`-mode` output still appears when it's run from a terminal, because it
+attaches to the console that started it.
 
-All three `.exe` files also carry the same monitor glyph as their
-Explorer/taskbar file icon (the same one `StayWakeBlackScreenIdle.exe`
-draws at runtime for its tray icon), embedded via a
-`rsrc_windows_amd64.syso` resource file already committed in each `cmd/`
-directory - `go build` picks these up automatically, no extra step
-needed. If the glyph in `internal/monitoricon` ever changes, regenerate
-them with:
+Both `.exe` files carry the monitor glyph as their Explorer/taskbar icon
+(the same one the idle guard draws at runtime for its tray icon),
+embedded via a `rsrc_windows_amd64.syso` resource file committed in each
+`cmd/` directory — `go build` picks these up automatically. Setup's also
+embeds `cmd/stay-wake-setup/setup.manifest`, which its dialog needs. If
+the glyph or the manifest changes, regenerate them with:
 
 ```
 go run ./tools/genicon monitor.ico
 go run github.com/akavel/rsrc@latest -ico monitor.ico -arch amd64 -o cmd/staywakeblackscreen/rsrc_windows_amd64.syso
-go run github.com/akavel/rsrc@latest -ico monitor.ico -arch amd64 -o cmd/staywakeblackscreenidle/rsrc_windows_amd64.syso
-go run github.com/akavel/rsrc@latest -ico monitor.ico -arch amd64 -o cmd/stay-wake-setup/rsrc_windows_amd64.syso
+go run github.com/akavel/rsrc@latest -manifest cmd/stay-wake-setup/setup.manifest -ico monitor.ico -arch amd64 -o cmd/stay-wake-setup/rsrc_windows_amd64.syso
 ```
 
 A test fails if those committed icon resources no longer match what the
@@ -206,38 +215,36 @@ generator produces, so a changed glyph can't ship half-applied.
 Package layout:
 
 ```
-internal/blackout/       Win32 bindings: sleep/display block, input
+internal/blackout/        Win32 bindings: sleep/display block, input
                           hooks, overlay windows, DPI, idle detection
 internal/tray/            Notification-area icon, menu, drawn icon
-internal/win32/           Win32 declarations shared by blackout and tray
+internal/win32/           Win32 declarations shared between packages
 internal/monitoricon/     The monitor glyph's geometry, shared by the
                           tray icon and the generated .exe file icon
 internal/singleinstance/  Named-mutex single-instance guard
-internal/setup/           Install/uninstall logic shared by Setup_StayWakeBlackScreenIdle.exe
-internal/setupmenu/       Setup's interactive console menu (OS-independent)
-internal/autostart/       Startup-folder shortcut, kept in line with the setting
-internal/config/          Loads, and on first run creates, config.yaml
+internal/setup/           Install/uninstall, downloads through WinINet
+internal/shortcut/        Startup and Start menu shortcuts
+internal/config/          Loads, creates and edits config.yaml
 internal/applog/          Opt-in diagnostics log next to the exe
 tools/genicon/            Renders internal/monitoricon as a .ico file
-cmd/staywakeblackscreen/     StayWakeBlackScreen.exe
-cmd/staywakeblackscreenidle/ StayWakeBlackScreenIdle.exe
-cmd/stay-wake-setup/         Setup_StayWakeBlackScreenIdle.exe
+cmd/staywakeblackscreen/  StayWakeBlackScreen.exe (both modes)
+cmd/stay-wake-setup/      Setup_StayWakeBlackScreen.exe (dialog, -mode)
 ```
 
 ## Prebuilt releases and CI
 
 The GitHub Actions workflow (`.github/workflows/build.yml`) tests and
-cross-compiles all three `.exe` files and publishes them to a
+cross-compiles both `.exe` files and publishes them to a
 [GitHub Release](../../releases) whenever a `v*` tag is pushed (or the
 workflow is triggered manually). Grab the latest from the
 [Releases](../../releases) page, or just run
-`Setup_StayWakeBlackScreenIdle.exe` and choose "Install / update" to
-fetch and install `StayWakeBlackScreenIdle.exe` automatically.
+`Setup_StayWakeBlackScreen.exe`, which always installs the latest release.
 
 Every push and pull request to `main` also runs `.github/workflows/ci.yml`:
-the tests, vet, and a compile of all three `.exe` files, without
-publishing anything.
+the tests, vet, and a compile of both `.exe` files, without publishing
+anything.
 
 ## Requirements
 
-- Windows (Windows Forms-equivalent GUI + Win32 hooks are Windows-only)
+- Windows 10 or later (the input hooks and task dialogs are
+  Windows-only, and Go itself needs Windows 10)

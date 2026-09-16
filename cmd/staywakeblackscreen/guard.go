@@ -24,6 +24,8 @@ const (
 // Nothing polls. While enabled and not blacked out, a single one-shot
 // timer is armed for the moment the idle threshold would be reached;
 // while blacked out, the input hook posts Escape straight to the loop.
+// A copy of the program opened for an instant black screen asks the
+// guard to black out through its tray window (see blackoutNow).
 type guard struct {
 	logf        func(format string, args ...any)
 	heartbeatMs uint32
@@ -49,7 +51,7 @@ func newGuard(logf func(format string, args ...any), idleThresholdMs int32, hear
 // start creates the tray icon and, if enabled, starts the idle countdown.
 func (g *guard) start() error {
 	var err error
-	if g.trayHwnd, err = tray.NewWindow(g.toggle, g.showMenu); err != nil {
+	if g.trayHwnd, err = tray.NewWindow(g.toggle, g.showMenu, g.blackoutNow); err != nil {
 		return fmt.Errorf("creating tray window: %w", err)
 	}
 	g.applyTrayIcon()
@@ -96,13 +98,18 @@ func (g *guard) handleTimer(id uintptr) error {
 	return nil
 }
 
-// handleEscape ends the blackout, if one is running, and restarts the
-// idle countdown from now.
+// handleEscape ends the blackout, if one is running. An enabled guard then
+// restarts the idle countdown from now; a disabled one only blacked out
+// because it was asked to, and goes back to letting Windows sleep.
 func (g *guard) handleEscape() error {
 	if g.session == nil {
 		return nil // a stray press that was queued just as the blackout ended
 	}
 	g.endBlackout()
+	if !g.enabled {
+		blackout.RestoreExecutionState()
+		return nil
+	}
 	g.idle.Reset(blackout.GetTickCount())
 	return g.checkIdle()
 }
@@ -114,9 +121,12 @@ func (g *guard) handleEscape() error {
 // the rest.
 func (g *guard) checkIdle() error {
 	g.stopIdleTimer()
+	if g.session != nil {
+		return nil // already black; Escape restarts the countdown
+	}
 	remaining := g.idle.Remaining(blackout.GetTickCount(), blackout.GetLastInputTick())
 	if remaining <= 0 {
-		return g.enterBlackout()
+		return g.enterBlackout("Idle timeout reached")
 	}
 	var err error
 	if g.idleTimer, err = blackout.StartTimer(uint32(remaining)); err != nil {
@@ -130,20 +140,48 @@ func (g *guard) stopIdleTimer() {
 	g.idleTimer = 0
 }
 
-func (g *guard) enterBlackout() error {
-	g.logf("Idle timeout reached - entering blackout")
-	var err error
-	if g.session, err = blackout.Start(g.heartbeatMs, g.logf); err != nil {
+func (g *guard) enterBlackout(reason string) error {
+	g.logf("%s - entering blackout", reason)
+	s, err := blackout.Start(g.heartbeatMs, g.logf)
+	if err != nil {
+		s.End() // undo whatever part of the blackout did start
 		return fmt.Errorf("entering blackout: %w", err)
 	}
+	g.session = s
 	return nil
+}
+
+// blackoutNow is what a copy of the program opened for an instant black
+// screen asks for. It works whether or not the guard is enabled; a
+// disabled guard just has to keep Windows awake while the blackout lasts.
+func (g *guard) blackoutNow() {
+	if g.session != nil {
+		return
+	}
+	g.stopIdleTimer()
+	if !g.enabled {
+		blackout.BlockSleep()
+	}
+	err := g.enterBlackout("Black screen requested")
+	if err == nil {
+		return
+	}
+	g.logf("EXCEPTION %v", err)
+	if !g.enabled {
+		blackout.RestoreExecutionState()
+		return
+	}
+	if err := g.checkIdle(); err != nil {
+		g.logf("EXCEPTION %v", err)
+		blackout.PostQuitMessage()
+	}
 }
 
 func (g *guard) endBlackout() {
 	if g.session == nil {
 		return
 	}
-	g.logf("Exiting blackout, resuming idle watch")
+	g.logf("Exiting blackout")
 	g.session.End()
 	g.session = nil
 }
@@ -219,7 +257,7 @@ func (g *guard) applyTrayIcon() {
 		g.logf("EXCEPTION building tray icon: %v", err)
 		return
 	}
-	tooltip := fmt.Sprintf("StayWakeBlackScreenIdle %s - %s", version, state)
+	tooltip := fmt.Sprintf("StayWakeBlackScreen %s - %s", version, state)
 	if err := tray.SetIcon(g.trayHwnd, newIcon, tooltip); err != nil {
 		g.logf("EXCEPTION showing tray icon: %v", err)
 	}
