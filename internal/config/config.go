@@ -3,14 +3,19 @@
 // uses (%LOCALAPPDATA%\StayWakeBlackScreen). It is created with default
 // values the first time it's loaded, so the user always has a real file
 // to edit rather than having to know the option names up front.
+//
+// The file is YAML-shaped so editors highlight it and it reads the way
+// people expect, but only the handful of "key: value" lines this tool
+// writes are understood - see parse. Three settings don't justify a YAML
+// library.
 package config
 
 import (
 	"fmt"
 	"os"
 	"path/filepath"
-
-	"gopkg.in/yaml.v3"
+	"strconv"
+	"strings"
 )
 
 // Defaults written to a freshly created config.yaml, and also the
@@ -45,9 +50,9 @@ start_enabled: %t
 // Config holds the settings read from config.yaml. Keys it doesn't know,
 // such as the poll_ms that older versions wrote, are ignored.
 type Config struct {
-	IdleMinutes      int  `yaml:"idle_minutes"`
-	HeartbeatSeconds int  `yaml:"heartbeat_seconds"`
-	StartEnabled     bool `yaml:"start_enabled"`
+	IdleMinutes      int
+	HeartbeatSeconds int
+	StartEnabled     bool
 }
 
 func defaults() Config {
@@ -87,7 +92,7 @@ func Load() (Config, error) {
 	}
 
 	cfg := def
-	if err := yaml.Unmarshal(data, &cfg); err != nil {
+	if err := parse(data, &cfg); err != nil {
 		return def, fmt.Errorf("parsing config.yaml: %w", err)
 	}
 	if cfg.IdleMinutes < 1 {
@@ -97,6 +102,62 @@ func Load() (Config, error) {
 		cfg.HeartbeatSeconds = DefaultHeartbeatSeconds
 	}
 	return cfg, nil
+}
+
+// parse fills cfg from the file's "key: value" lines, leaving fields the
+// file doesn't mention untouched. It understands blank lines, whole-line
+// and trailing comments, optional quotes, and CRLF - everything a user
+// editing this file in Notepad can produce. An unknown key is skipped so
+// files from other versions still load; a value that isn't a number or a
+// true/false is an error.
+func parse(data []byte, cfg *Config) error {
+	text := strings.TrimPrefix(string(data), "\ufeff") // Notepad writes a BOM
+	for n, raw := range strings.Split(text, "\n") {
+		line := strings.TrimSpace(raw)
+		if line == "" || strings.HasPrefix(line, "#") {
+			continue
+		}
+		key, value, ok := strings.Cut(line, ":")
+		if !ok {
+			return fmt.Errorf(`line %d: expected "key: value", got %q`, n+1, line)
+		}
+		key = strings.TrimSpace(key)
+		value = strings.TrimSpace(value)
+		if i := strings.Index(value, " #"); i >= 0 { // a trailing comment
+			value = strings.TrimSpace(value[:i])
+		}
+		value = strings.Trim(value, `"'`)
+		if value == "" { // "key:" with nothing after it: keep the default
+			continue
+		}
+
+		var err error
+		switch key {
+		case "idle_minutes":
+			cfg.IdleMinutes, err = strconv.Atoi(value)
+		case "heartbeat_seconds":
+			cfg.HeartbeatSeconds, err = strconv.Atoi(value)
+		case "start_enabled":
+			cfg.StartEnabled, err = parseBool(value)
+		default:
+			continue // a setting this version doesn't know
+		}
+		if err != nil {
+			return fmt.Errorf("line %d: %s: %w", n+1, key, err)
+		}
+	}
+	return nil
+}
+
+// parseBool accepts the spellings a hand-edited YAML-ish file may carry.
+func parseBool(s string) (bool, error) {
+	switch strings.ToLower(s) {
+	case "true", "yes", "on", "1":
+		return true, nil
+	case "false", "no", "off", "0":
+		return false, nil
+	}
+	return false, fmt.Errorf("%q is not true or false", s)
 }
 
 // Path returns the config.yaml path, creating its containing directory

@@ -73,6 +73,31 @@ func TestLoad(t *testing.T) {
 			yaml: "idle_minutes: 4\npoll_ms: 100\n",
 			want: Config{IdleMinutes: 4, HeartbeatSeconds: 5, StartEnabled: true},
 		},
+		{
+			name: "comments, blank lines and odd spacing",
+			yaml: "# header\n\n  idle_minutes:   7   # was 3\n\n# trailing note\nstart_enabled: false\n",
+			want: Config{IdleMinutes: 7, HeartbeatSeconds: 5, StartEnabled: false},
+		},
+		{
+			name: "windows line endings and a Notepad byte order mark",
+			yaml: "\ufeff# edited in Notepad\r\nidle_minutes: 9\r\nheartbeat_seconds: 2\r\n",
+			want: Config{IdleMinutes: 9, HeartbeatSeconds: 2, StartEnabled: true},
+		},
+		{
+			name: "quoted values and yes/no booleans",
+			yaml: "idle_minutes: \"8\"\nstart_enabled: no\n",
+			want: Config{IdleMinutes: 8, HeartbeatSeconds: 5, StartEnabled: false},
+		},
+		{
+			name: "a key with no value keeps its default",
+			yaml: "idle_minutes:\nheartbeat_seconds: 4\n",
+			want: Config{IdleMinutes: 3, HeartbeatSeconds: 4, StartEnabled: true},
+		},
+		{
+			name: "the generated file itself round-trips",
+			yaml: "# StayWakeBlackScreen configuration\n#\n# idle_minutes: minutes of inactivity\nidle_minutes: 3\n\nheartbeat_seconds: 5\n\nstart_enabled: true\n",
+			want: Config{IdleMinutes: 3, HeartbeatSeconds: 5, StartEnabled: true},
+		},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
@@ -91,17 +116,30 @@ func TestLoad(t *testing.T) {
 	}
 }
 
-func TestLoadMalformedYAMLFallsBackToDefaults(t *testing.T) {
-	path := useTempDir(t)
-	if err := os.WriteFile(path, []byte("idle_minutes: [not a number\n"), 0o644); err != nil {
-		t.Fatal(err)
+func TestLoadRejectsBrokenFiles(t *testing.T) {
+	tests := []struct {
+		name string
+		yaml string
+	}{
+		{"value that isn't a number", "idle_minutes: [not a number\n"},
+		{"letters where a number belongs", "heartbeat_seconds: often\n"},
+		{"value that isn't true or false", "start_enabled: maybe\n"},
+		{"a line that isn't key: value", "idle_minutes 3\n"},
 	}
-	cfg, err := Load()
-	if err == nil {
-		t.Error("Load returned no error for malformed YAML")
-	}
-	if cfg != defaults() {
-		t.Errorf("Load = %+v, want defaults %+v", cfg, defaults())
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			path := useTempDir(t)
+			if err := os.WriteFile(path, []byte(tt.yaml), 0o644); err != nil {
+				t.Fatal(err)
+			}
+			cfg, err := Load()
+			if err == nil {
+				t.Error("Load returned no error")
+			}
+			if cfg != defaults() {
+				t.Errorf("Load = %+v, want defaults %+v", cfg, defaults())
+			}
+		})
 	}
 }
 

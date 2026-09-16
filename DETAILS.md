@@ -155,7 +155,9 @@ for troubleshooting only.
 
 ## Building from source
 
-Requires Go 1.26+ (matching the `go` directive in `go.mod`).
+Requires Go 1.26+ (matching the `go` directive in `go.mod`). The only
+module it requires is `golang.org/x/sys`; config.yaml is parsed by a few
+dozen lines in `internal/config` rather than a YAML library.
 
 ```
 GOOS=windows GOARCH=amd64 go build -trimpath -ldflags "-H=windowsgui -s -w" -o StayWakeBlackScreen.exe ./cmd/staywakeblackscreen
