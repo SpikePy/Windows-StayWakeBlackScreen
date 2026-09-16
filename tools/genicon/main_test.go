@@ -61,7 +61,7 @@ func TestEncodeICO(t *testing.T) {
 
 // TestCommittedIconResourcesAreCurrent fails if the glyph changed but the
 // committed rsrc_windows_amd64.syso files weren't regenerated (see the
-// README), or if a program in cmd/ has no icon resource at all: rsrc
+// DETAILS.md), or if a program in cmd/ has no icon resource at all: rsrc
 // stores each PNG frame verbatim, so every frame genicon renders today
 // must appear in each .syso.
 func TestCommittedIconResourcesAreCurrent(t *testing.T) {
@@ -87,7 +87,7 @@ func TestCommittedIconResourcesAreCurrent(t *testing.T) {
 		}
 		for i, f := range frames {
 			if !bytes.Contains(data, f) {
-				t.Errorf("%s is stale: its %dpx frame doesn't match genicon's output; regenerate it (see README)", syso, sizes[i])
+				t.Errorf("%s is stale: its %dpx frame doesn't match genicon's output; regenerate it (see DETAILS.md)", syso, sizes[i])
 			}
 		}
 	}
