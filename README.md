@@ -50,10 +50,10 @@ greyed out with a diagonal red strike while disabled. Hovering over it
 shows the version and the current state.
 
 - **Left-click** toggles it between enabled and disabled.
-- **Right-click** opens a menu: Black out now, Enable, Disable, Configure,
+- **Right-click** opens a menu: Blackout, Enable, Disable, Configure,
   Exit.
 
-**Black out now** blacks out the screen at once, even while the guard is
+**Blackout** blacks out the screen at once, even while the guard is
 disabled. Disabling restores input right away (if blacked out) and lets Windows
 sleep and lock normally again, without stopping the program — re-enable
 it any time from the same menu. **Configure** opens the settings file in

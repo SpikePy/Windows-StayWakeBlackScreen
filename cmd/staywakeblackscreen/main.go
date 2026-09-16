@@ -16,7 +16,7 @@
 // Escape then ends the black screen, but the guard keeps running and the
 // countdown restarts. The tray icon (monitor glyph = enabled, the same
 // glyph greyed out with a red strike = disabled) toggles it on left-click;
-// right-click opens Black out now, Enable, Disable, Configure and Exit;
+// right-click opens Blackout, Enable, Disable, Configure and Exit;
 // Configure opens config.yaml in its default editor.
 //
 // Windows never lets any hook suppress Ctrl+Alt+Del, so that always

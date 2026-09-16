@@ -152,7 +152,7 @@ func (g *guard) enterBlackout(reason string) error {
 	return nil
 }
 
-// blackoutNow is the tray menu's "Black out now", and what a copy of the
+// blackoutNow is the tray menu's "Blackout", and what a copy of the
 // program opened for an instant black screen asks for. It works whether or not the guard is enabled; a
 // disabled guard just has to keep Windows awake while the blackout lasts.
 func (g *guard) blackoutNow() {
@@ -216,7 +216,7 @@ func (g *guard) setEnabled(v bool) {
 // showMenu is the tray icon's right-click action.
 func (g *guard) showMenu() {
 	id := tray.ShowMenu(g.trayHwnd, []tray.MenuItem{
-		{ID: menuIDBlackoutNow, Label: "Black out now"},
+		{ID: menuIDBlackoutNow, Label: "Blackout"},
 		{},
 		{ID: menuIDEnable, Label: "Enable", Checked: g.enabled},
 		{ID: menuIDDisable, Label: "Disable", Checked: !g.enabled},
