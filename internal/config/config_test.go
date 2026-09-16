@@ -223,3 +223,34 @@ func TestSetAutostartCreatesTheFile(t *testing.T) {
 		t.Errorf("Load = %+v, %v; want %+v", cfg, err, want)
 	}
 }
+
+func TestExistingLeavesNoTrace(t *testing.T) {
+	base := t.TempDir()
+	t.Setenv("LOCALAPPDATA", base)
+	cfg, found := Existing()
+	if found || cfg != defaults() {
+		t.Errorf("Existing() with no file = %+v, %t; want defaults, false", cfg, found)
+	}
+	if _, err := os.Stat(filepath.Join(base, "StayWakeBlackScreen")); !os.IsNotExist(err) {
+		t.Errorf("Existing() created the config folder (stat: %v)", err)
+	}
+}
+
+func TestExistingReadsTheFile(t *testing.T) {
+	path := useTempDir(t)
+	if err := os.WriteFile(path, []byte("autostart: false\nidle_minutes: 0\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	want := defaults()
+	want.Autostart = false // idle_minutes 0 is invalid, so it keeps its default
+	if cfg, found := Existing(); !found || cfg != want {
+		t.Errorf("Existing() = %+v, %t; want %+v, true", cfg, found, want)
+	}
+
+	if err := os.WriteFile(path, []byte("autostart: [broken\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if cfg, found := Existing(); !found || cfg != defaults() {
+		t.Errorf("Existing() with a broken file = %+v, %t; want defaults, true", cfg, found)
+	}
+}

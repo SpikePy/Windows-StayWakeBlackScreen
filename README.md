@@ -15,7 +15,7 @@ Setup are each a single self-contained `.exe`.
 ## Get it
 
 Download `Setup_StayWakeBlackScreen.exe` from the
-[Releases](../../releases) page and run it. It asks how you want to use
+[Releases](../../releases) page and run it. Pick how you want to use
 StayWakeBlackScreen:
 
 - **Idle guard** — runs in the background with a tray icon and blacks out
@@ -24,7 +24,10 @@ StayWakeBlackScreen:
 - **Instant black screen** — adds StayWakeBlackScreen to the Start menu;
   opening it blacks out the screen right away.
 
-Run Setup again to update, to switch between the two, or to uninstall.
+Then click **Install/Update** - or just leave it: after 5 seconds Setup
+installs the preselected choice by itself, and after a successful install
+it closes itself. Run Setup again to update, to switch between the two, or
+to **Uninstall**; **Close** changes nothing.
 Everything is installed for your account only, in
 `%LOCALAPPDATA%\StayWakeBlackScreen\`, and nothing needs administrator
 rights.

@@ -59,24 +59,36 @@ or uninstalling.
 
 ## Setup
 
-`Setup_StayWakeBlackScreen.exe` opens a small Windows dialog with three
-choices and does nothing until you pick one:
+`Setup_StayWakeBlackScreen.exe` opens a small Windows dialog. Two radio
+buttons choose how the program is used - preselected from your current
+`config.yaml`, or the idle guard on a PC where it was never installed -
+and three buttons act on that:
 
-- **Idle guard** installs the program, turns the `autostart` setting on,
-  adds the Startup shortcut (which passes `-background`), removes the
-  Start menu entry and starts the guard.
-- **Instant black screen** installs the program, turns `autostart` off,
-  removes the Startup shortcut and adds a Start menu entry that opens the
-  program without arguments. It doesn't start the program — that would
-  black out the screen in the middle of setup.
+- **Install/Update** installs or updates the program for the chosen use:
+  - *Idle guard*: turns the `autostart` setting on, adds the Startup
+    shortcut (which passes `-background`), removes the Start menu entry
+    and starts the guard.
+  - *Instant black screen*: turns `autostart` off, removes the Startup
+    shortcut and adds a Start menu entry that opens the program without
+    arguments. It doesn't start the program - that would black out the
+    screen in the middle of setup.
 - **Uninstall** removes both shortcuts, stops the program and deletes
   `%LOCALAPPDATA%\StayWakeBlackScreen\`, including `config.yaml`.
+- **Close** leaves everything as it is, and so do Escape and the title
+  bar's X. Just opening Setup doesn't create or change anything.
 
-It then shows its progress and the result. Choosing again later updates
-the program or switches between the two uses. Setup always installs the
-latest release - found through GitHub's plain release links, not the
-GitHub API, so there's no API rate limit to run into - stops any running copy before replacing the file, and
-clears out what versions before 2.0 left behind: the separate
+If nothing is clicked within 5 seconds, Install/Update runs by itself
+with the preselected use, so double-clicking Setup and walking away still
+installs or updates; clicking anything, a radio button included, stops
+that countdown for good. Setup then shows its progress and the result.
+After a success it closes itself 5 seconds later (Close works at once);
+after an error it stays open, so you can read what went wrong. Running
+Setup again later updates the program or switches between the two uses.
+
+Setup always installs the latest release - found through GitHub's plain
+release links, not the GitHub API, so there's no API rate limit to run
+into - stops any running copy before replacing the file, and clears out
+what versions before 2.0 left behind: the separate
 `StayWakeBlackScreenIdle.exe`, its Startup shortcut, and the registry
 value even older versions used for autostart.
 
@@ -85,8 +97,9 @@ needs administrator rights. Setup's manifest says so explicitly, which
 also stops Windows from asking for elevation just because the file is
 called "Setup".
 
-For scripts, `-mode` runs one action without the dialog and prints its
-steps to the console it was started from (exit code 1 on failure):
+For scripts, `-mode` runs one action without the dialog (and without its
+countdowns) and prints its steps to the console it was started from (exit
+code 1 on failure):
 
 ```
 Setup_StayWakeBlackScreen.exe -mode background    (or -mode install)

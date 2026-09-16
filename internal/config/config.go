@@ -109,13 +109,39 @@ func Load() (Config, error) {
 	if err := parse(data, &cfg); err != nil {
 		return def, fmt.Errorf("parsing config.yaml: %w", err)
 	}
+	fixInvalid(&cfg)
+	return cfg, nil
+}
+
+// Existing reads config.yaml if there is one, without creating the file
+// or its folder - for Setup, which must leave no trace until asked to act.
+// It reports whether the file was there; a file that can't be parsed
+// counts as there, with default values.
+func Existing() (Config, bool) {
+	dir, err := dirPath()
+	if err != nil {
+		return defaults(), false
+	}
+	data, err := os.ReadFile(filepath.Join(dir, fileName))
+	if err != nil {
+		return defaults(), false
+	}
+	cfg := defaults()
+	if err := parse(data, &cfg); err != nil {
+		return defaults(), true
+	}
+	fixInvalid(&cfg)
+	return cfg, true
+}
+
+// fixInvalid puts each out-of-range value back to its default.
+func fixInvalid(cfg *Config) {
 	if cfg.IdleMinutes < 1 {
 		cfg.IdleMinutes = DefaultIdleMinutes
 	}
 	if cfg.HeartbeatSeconds < 1 {
 		cfg.HeartbeatSeconds = DefaultHeartbeatSeconds
 	}
-	return cfg, nil
 }
 
 // parse fills cfg from the file's "key: value" lines, leaving fields the
@@ -228,7 +254,8 @@ func Path() (string, error) {
 	return filepath.Join(dir, fileName), nil
 }
 
-func userDir() (string, error) {
+// dirPath is the folder config.yaml lives in; see userDir to also create it.
+func dirPath() (string, error) {
 	dir := os.Getenv("LOCALAPPDATA")
 	if dir == "" {
 		var err error
@@ -237,7 +264,14 @@ func userDir() (string, error) {
 			return "", fmt.Errorf("resolving user config directory: %w", err)
 		}
 	}
-	dir = filepath.Join(dir, "StayWakeBlackScreen")
+	return filepath.Join(dir, "StayWakeBlackScreen"), nil
+}
+
+func userDir() (string, error) {
+	dir, err := dirPath()
+	if err != nil {
+		return "", err
+	}
 	if err := os.MkdirAll(dir, 0o755); err != nil {
 		return "", fmt.Errorf("creating config directory: %w", err)
 	}
