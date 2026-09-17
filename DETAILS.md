@@ -42,9 +42,9 @@ starts it this way at sign-in.
 The tray icon is a monitor glyph while enabled and the same glyph greyed
 out with a red strike while disabled. Left-click toggles it; right-click
 opens Blackout (the same as opening the program), Enable, Disable,
-Configure (opens `config.yaml` in its default editor) and Exit. The guard doesn't exit on its own otherwise: use
-*Exit*, Task Manager/`taskkill`, or Setup, which stops it when updating
-or uninstalling.
+Configure (opens `config.yaml` in its default editor) and Exit. The guard
+doesn't exit on its own otherwise: use *Exit*, Task Manager/`taskkill`,
+or Setup, which stops it when updating or uninstalling.
 
 ### Flags
 
@@ -77,13 +77,10 @@ and three buttons act on that:
 - **Close** leaves everything as it is, and so do Escape and the title
   bar's X. Just opening Setup doesn't create or change anything.
 
-If nothing is clicked within 5 seconds, Install/Update runs by itself
-with the preselected use, so double-clicking Setup and walking away still
-installs or updates; clicking anything, a radio button included, stops
-that countdown for good. Setup then shows its progress and the result.
-After a success it closes itself 5 seconds later (Close works at once);
-after an error it stays open, so you can read what went wrong. Running
-Setup again later updates the program or switches between the two uses.
+Nothing happens until you click one of the buttons. Setup then shows
+its progress and the result, which stays open until you close it - with
+the error spelled out if something went wrong. Running Setup again later
+updates the program or switches between the two uses.
 
 Setup always installs the latest release - found through GitHub's plain
 release links, not the GitHub API, so there's no API rate limit to run
@@ -97,9 +94,8 @@ needs administrator rights. Setup's manifest says so explicitly, which
 also stops Windows from asking for elevation just because the file is
 called "Setup".
 
-For scripts, `-mode` runs one action without the dialog (and without its
-countdowns) and prints its steps to the console it was started from (exit
-code 1 on failure):
+For scripts, `-mode` runs one action without the dialog and prints its
+steps to the console it was started from (exit code 1 on failure):
 
 ```
 Setup_StayWakeBlackScreen.exe -mode background    (or -mode install)

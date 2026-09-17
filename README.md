@@ -24,10 +24,8 @@ StayWakeBlackScreen:
 - **Instant black screen** — adds StayWakeBlackScreen to the Start menu;
   opening it blacks out the screen right away.
 
-Then click **Install/Update** - or just leave it: after 5 seconds Setup
-installs the preselected choice by itself, and after a successful install
-it closes itself. Run Setup again to update, to switch between the two, or
-to **Uninstall**; **Close** changes nothing.
+Then click **Install/Update**. Run Setup again to update, to switch
+between the two, or to **Uninstall**; **Close** changes nothing.
 Everything is installed for your account only, in
 `%LOCALAPPDATA%\StayWakeBlackScreen\`, and nothing needs administrator
 rights.
@@ -57,10 +55,10 @@ shows the version and the current state.
   Exit.
 
 **Blackout** blacks out the screen at once, even while the guard is
-disabled. Disabling restores input right away (if blacked out) and lets Windows
-sleep and lock normally again, without stopping the program — re-enable
-it any time from the same menu. **Configure** opens the settings file in
-whatever application Windows uses for `.yaml` files.
+disabled. Disabling restores input right away (if blacked out) and lets
+Windows sleep and lock normally again, without stopping the program —
+re-enable it any time from the same menu. **Configure** opens the
+settings file in whatever application Windows uses for `.yaml` files.
 
 ## Settings
 
