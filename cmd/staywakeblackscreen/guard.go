@@ -260,7 +260,7 @@ func (g *guard) applyTrayIcon() {
 		g.logf("EXCEPTION building tray icon: %v", err)
 		return
 	}
-	tooltip := fmt.Sprintf("StayWakeBlackScreen %s - %s", version, state)
+	tooltip := fmt.Sprintf("StayWakeBlackScreen %s – %s", version, state)
 	if err := tray.SetIcon(g.trayHwnd, newIcon, tooltip); err != nil {
 		g.logf("EXCEPTION showing tray icon: %v", err)
 	}
