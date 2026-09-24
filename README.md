@@ -50,7 +50,7 @@ The idle guard shows a monitor glyph while enabled, and the same glyph
 greyed out with a diagonal red strike while disabled. Hovering over it
 shows the version and the current state.
 
-- **Left-click** toggles it between enabled and disabled.
+- **Left-click** blacks out the screen at once (the same as Blackout).
 - **Right-click** opens a menu: Blackout, Enable, Disable, Configure,
   Exit.
 

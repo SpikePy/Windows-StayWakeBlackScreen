@@ -40,7 +40,7 @@ again after another idle period, indefinitely. The Startup shortcut
 starts it this way at sign-in.
 
 The tray icon is a monitor glyph while enabled and the same glyph greyed
-out with a red strike while disabled. Left-click toggles it; right-click
+out with a red strike while disabled. Left-click blacks out at once; right-click
 opens Blackout (the same as opening the program), Enable, Disable,
 Configure (opens `config.yaml` in its default editor) and Exit. The guard
 doesn't exit on its own otherwise: use *Exit*, Task Manager/`taskkill`,

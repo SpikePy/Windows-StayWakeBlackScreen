@@ -15,7 +15,7 @@
 // blacks out the same way only after idle_minutes without real input.
 // Escape then ends the black screen, but the guard keeps running and the
 // countdown restarts. The tray icon (monitor glyph = enabled, the same
-// glyph greyed out with a red strike = disabled) toggles it on left-click;
+// glyph greyed out with a red strike = disabled) blacks out on left-click;
 // right-click opens Blackout, Enable, Disable, Configure and Exit;
 // Configure opens config.yaml in its default editor.
 //

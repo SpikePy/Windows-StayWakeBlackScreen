@@ -52,7 +52,7 @@ func newGuard(logf func(format string, args ...any), idleThresholdMs int32, hear
 // start creates the tray icon and, if enabled, starts the idle countdown.
 func (g *guard) start() error {
 	var err error
-	if g.trayHwnd, err = tray.NewWindow(g.toggle, g.showMenu, g.blackoutNow); err != nil {
+	if g.trayHwnd, err = tray.NewWindow(g.blackoutNow, g.showMenu, g.blackoutNow); err != nil {
 		return fmt.Errorf("creating tray window: %w", err)
 	}
 	g.applyTrayIcon()
@@ -152,8 +152,9 @@ func (g *guard) enterBlackout(reason string) error {
 	return nil
 }
 
-// blackoutNow is the tray menu's "Blackout", and what a copy of the
-// program opened for an instant black screen asks for. It works whether or not the guard is enabled; a
+// blackoutNow is the tray icon's left-click action, the tray menu's
+// "Blackout", and what a copy of the program opened for an instant black
+// screen asks for. It works whether or not the guard is enabled; a
 // disabled guard just has to keep Windows awake while the blackout lasts.
 func (g *guard) blackoutNow() {
 	if g.session != nil {
@@ -186,9 +187,6 @@ func (g *guard) endBlackout() {
 	g.session.End()
 	g.session = nil
 }
-
-// toggle is the tray icon's left-click action.
-func (g *guard) toggle() { g.setEnabled(!g.enabled) }
 
 func (g *guard) setEnabled(v bool) {
 	if g.enabled == v {
