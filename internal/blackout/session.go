@@ -22,14 +22,27 @@ type Session struct {
 	cursorHidden bool
 	hooked       bool
 	heartbeat    *heartbeat
+	refit        uintptr // one-shot timer for a pending re-fit; 0 if none
+	logf         func(format string, args ...any)
 }
+
+// current is the running Session, if any, for the overlay windows'
+// procedure to reach. There is only ever one, on the thread that
+// started it.
+var current *Session
+
+// refitDelayMs lets a display change settle - Windows sends one
+// WM_DISPLAYCHANGE to each overlay, sometimes more while a change
+// is still under way - before the overlays are re-fitted once.
+const refitDelayMs = 250
 
 // Start blacks out every screen and blocks all input. heartbeatMs is the
 // interval between Caps Lock pulses (see HeartbeatMs), and logf receives
 // diagnostics. If Start fails partway, the returned Session holds
 // whatever it had already set up, so callers must still call End.
 func Start(heartbeatMs uint32, logf func(format string, args ...any)) (*Session, error) {
-	s := &Session{}
+	s := &Session{logf: logf}
+	current = s
 
 	mons, err := monitors()
 	if err != nil {
@@ -67,9 +80,64 @@ func Start(heartbeatMs uint32, logf func(format string, args ...any)) (*Session,
 // HandleTimer processes a WM_TIMER message's id if it belongs to s. Safe
 // to call on a nil Session and with any id.
 func (s *Session) HandleTimer(id uintptr) {
-	if s != nil {
-		s.heartbeat.handleTimer(id)
+	if s == nil {
+		return
 	}
+	if id != 0 && id == s.refit {
+		StopTimer(s.refit)
+		s.refit = 0
+		s.refitWindows()
+		return
+	}
+	s.heartbeat.handleTimer(id)
+}
+
+// scheduleRefit (re)starts the re-fit timer, so a burst of display
+// change messages leads to a single re-fit. Safe to call on nil.
+func (s *Session) scheduleRefit() {
+	if s == nil || len(s.windows) == 0 {
+		return
+	}
+	StopTimer(s.refit)
+	s.refit = 0
+	var err error
+	if s.refit, err = StartTimer(refitDelayMs); err != nil {
+		s.logf("EXCEPTION starting re-fit timer: %v", err)
+		s.refitWindows() // better now than never
+	}
+}
+
+// refitWindows makes the overlays match the screens as they are now: one
+// per monitor, each covering it exactly. Existing windows are moved
+// rather than recreated, so there is no flash of what's underneath.
+func (s *Session) refitWindows() {
+	mons, err := monitors()
+	if err != nil || len(mons) == 0 {
+		s.logf("EXCEPTION re-enumerating monitors (keeping the overlays as they are): %v", err)
+		return
+	}
+	for i, m := range mons {
+		if i < len(s.windows) {
+			fitOverlayWindow(s.windows[i], m)
+			s.logf("Re-fitted overlay window to bounds=%+v", m)
+			continue
+		}
+		hwnd, err := createOverlayWindow(m)
+		if err != nil {
+			s.logf("EXCEPTION creating overlay window for %+v: %v", m, err)
+			continue
+		}
+		s.windows = append(s.windows, hwnd)
+		procShowWindow.Call(hwnd, swShow)
+		s.logf("Created overlay window for bounds=%+v", m)
+	}
+	if len(s.windows) > len(mons) {
+		for _, h := range s.windows[len(mons):] {
+			win32.DestroyWindow(h)
+		}
+		s.windows = s.windows[:len(mons)]
+	}
+	win32.SetForegroundWindow(s.windows[0])
 }
 
 // End undoes Start, restoring input first so the user regains control of
@@ -90,6 +158,11 @@ func (s *Session) End() {
 	}
 	s.heartbeat.stop()
 	s.heartbeat = nil
+	StopTimer(s.refit)
+	s.refit = 0
+	if current == s {
+		current = nil
+	}
 	for _, h := range s.windows {
 		win32.DestroyWindow(h)
 	}

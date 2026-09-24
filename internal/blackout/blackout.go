@@ -31,9 +31,19 @@ const overlayClassName = "StayWakeBlackoutWindow"
 var (
 	classOnce sync.Once
 	classErr  error
-
-	overlayWndProcCB = syscall.NewCallback(win32.DefWindowProc)
 )
+
+// overlayWndProc is the overlay windows' procedure. Screens can change
+// under a running blackout - a resolution or scaling change, a monitor
+// plugged in or out - and the overlays would then no longer cover them.
+// Every top-level window hears about it, so the overlays themselves ask
+// the session to re-fit.
+func overlayWndProc(hwnd uintptr, message uint32, wParam, lParam uintptr) uintptr {
+	if message == wmDisplayChange || message == wmDpiChanged {
+		current.scheduleRefit()
+	}
+	return win32.DefWindowProc(hwnd, message, wParam, lParam)
+}
 
 // EnableDPIAwareness must be called before any monitor bounds or window are
 // touched, so Screen bounds come back as real physical pixels instead of
@@ -229,7 +239,9 @@ func monitors() ([]Rect, error) {
 func ensureClass() error {
 	classOnce.Do(func() {
 		brush, _, _ := procCreateSolidBrush.Call(0) // RGB(0,0,0) = black
-		classErr = win32.RegisterClass(overlayClassName, overlayWndProcCB, syscall.Handle(brush))
+		// The callback is made here, not in a package variable, because
+		// overlayWndProc leads back to ensureClass via the re-fit.
+		classErr = win32.RegisterClass(overlayClassName, syscall.NewCallback(overlayWndProc), syscall.Handle(brush))
 	})
 	return classErr
 }
@@ -242,6 +254,15 @@ func createOverlayWindow(r Rect) (uintptr, error) {
 	}
 	return win32.CreateWindow(wsExTopmost|wsExToolWindow, wsPopup, overlayClassName, "",
 		r.Left, r.Top, r.Right-r.Left, r.Bottom-r.Top)
+}
+
+// fitOverlayWindow moves and resizes hwnd to cover r, keeping it topmost
+// and visible without stealing activation.
+func fitOverlayWindow(hwnd uintptr, r Rect) {
+	procSetWindowPos.Call(hwnd, hwndTopmost,
+		uintptr(int64(r.Left)), uintptr(int64(r.Top)),
+		uintptr(int64(r.Right-r.Left)), uintptr(int64(r.Bottom-r.Top)),
+		swpNoActivate|swpShowWindow)
 }
 
 // StartTimer creates a message-only timer (delivered as WM_TIMER with Hwnd

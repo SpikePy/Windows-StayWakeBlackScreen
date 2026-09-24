@@ -24,6 +24,7 @@ var (
 	procGetTickCount            = modKernel32.NewProc("GetTickCount")
 
 	procShowWindow                    = modUser32.NewProc("ShowWindow")
+	procSetWindowPos                  = modUser32.NewProc("SetWindowPos")
 	procGetMessageW                   = modUser32.NewProc("GetMessageW")
 	procTranslateMessage              = modUser32.NewProc("TranslateMessage")
 	procDispatchMessageW              = modUser32.NewProc("DispatchMessageW")
@@ -54,6 +55,12 @@ const (
 	wsExToolWindow = 0x00000080
 
 	swShow = 5
+
+	hwndTopmost     = ^uintptr(0) // (HWND)-1
+	swpNoActivate   = 0x0010
+	swpShowWindow   = 0x0040
+	wmDisplayChange = 0x007E
+	wmDpiChanged    = 0x02E0
 
 	whKeyboardLL = 13
 	whMouseLL    = 14
