@@ -72,7 +72,8 @@ start_enabled: true    # false = start paused, enable it from the tray
 autostart: true        # start the idle guard when you sign in
 ```
 
-Edit a value and restart the program to apply it. Setup sets `autostart`
+Changes apply as soon as you save the file; only `start_enabled` waits for
+the next start. Setup sets `autostart`
 to match your choice. Every setting also has a matching command-line flag
 that overrides the file for that run — see [DETAILS.md](DETAILS.md).
 

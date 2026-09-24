@@ -57,3 +57,15 @@ func TestIdleTrackerAcrossTickWraparound(t *testing.T) {
 		t.Errorf("10s after post-wrap input: Remaining = %d, want %d", got, minute-10_000)
 	}
 }
+
+func TestIdleTrackerSetThresholdKeepsIdleTime(t *testing.T) {
+	tr := NewIdleTracker(3*minute, 0)
+	tr.SetThreshold(5 * minute)
+	if got := tr.Remaining(2*minute, 0); got != 3*minute {
+		t.Errorf("raised: Remaining = %d, want %d", got, 3*minute)
+	}
+	tr.SetThreshold(minute)
+	if got := tr.Remaining(2*minute, 0); got > 0 {
+		t.Errorf("lowered below the idle time: Remaining = %d, want <= 0", got)
+	}
+}

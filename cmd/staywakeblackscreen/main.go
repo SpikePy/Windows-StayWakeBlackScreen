@@ -17,7 +17,8 @@
 // countdown restarts. The tray icon (monitor glyph = enabled, the same
 // glyph greyed out with a red strike = disabled) blacks out on left-click;
 // right-click opens Blackout, Enable, Disable, Configure and Exit;
-// Configure opens config.yaml in its default editor.
+// Configure opens config.yaml in its default editor, and the guard applies
+// the file whenever it is saved.
 //
 // Windows never lets any hook suppress Ctrl+Alt+Del, so that always
 // remains a hard way out while the screen is black.
@@ -60,6 +61,15 @@ var version = "dev"
 
 type logFunc = func(format string, args ...any)
 
+// settings are what the background guard applies while it runs, as
+// config.yaml changes. start_enabled only matters at start, so it isn't
+// one of them.
+type settings struct {
+	idleMinutes      int
+	heartbeatSeconds int
+	autostart        bool
+}
+
 func main() {
 	// Win32 hooks, timers and the message queue are bound to the OS thread
 	// that creates them; the Go runtime must never migrate this goroutine
@@ -82,12 +92,34 @@ func main() {
 	}
 	syncAutostart(*autostartOn, logf)
 
-	heartbeatMs := blackout.HeartbeatMs(*heartbeatSeconds)
-	if *background {
-		runBackground(*idleMinutes, heartbeatMs, *startEnabled, logf, logPath)
-	} else {
-		runInstant(heartbeatMs, logf, logPath)
+	if !*background {
+		runInstant(blackout.HeartbeatMs(*heartbeatSeconds), logf, logPath)
+		return
 	}
+
+	// A flag given on the command line keeps winning over config.yaml for
+	// the whole run, also when the file changes.
+	given := map[string]bool{}
+	flag.Visit(func(f *flag.Flag) { given[f.Name] = true })
+	flagged := settings{*idleMinutes, *heartbeatSeconds, *autostartOn}
+	reload := func() (settings, error) {
+		cfg, err := config.Load()
+		if err != nil {
+			return settings{}, err
+		}
+		s := settings{cfg.IdleMinutes, cfg.HeartbeatSeconds, cfg.Autostart}
+		if given["idle-minutes"] {
+			s.idleMinutes = flagged.idleMinutes
+		}
+		if given["heartbeat-seconds"] {
+			s.heartbeatSeconds = flagged.heartbeatSeconds
+		}
+		if given["autostart"] {
+			s.autostart = flagged.autostart
+		}
+		return s, nil
+	}
+	runBackground(flagged, reload, *startEnabled, logf, logPath)
 }
 
 // runInstant blacks out the screen now and returns once Escape ends it.
@@ -157,7 +189,7 @@ func runInstant(heartbeatMs uint32, logf logFunc, logPath string) {
 }
 
 // runBackground runs the idle guard until Exit is chosen from its tray menu.
-func runBackground(idleMinutes int, heartbeatMs uint32, startEnabled bool, logf logFunc, logPath string) {
+func runBackground(s settings, reload func() (settings, error), startEnabled bool, logf logFunc, logPath string) {
 	release, alreadyRunning, err := singleinstance.Acquire(`StayWakeBlackScreen_Background`)
 	if err != nil {
 		logf("EXCEPTION acquiring single-instance mutex: %v", err)
@@ -169,7 +201,7 @@ func runBackground(idleMinutes int, heartbeatMs uint32, startEnabled bool, logf 
 	}
 	defer release()
 
-	g := newGuard(logf, blackout.IdleThresholdMs(idleMinutes), heartbeatMs, startEnabled)
+	g := newGuard(logf, s, reload, startEnabled)
 	defer func() {
 		g.cleanup()
 		logf("Cleanup done. Log at: %s", logPath)
@@ -195,7 +227,7 @@ func runBackground(idleMinutes int, heartbeatMs uint32, startEnabled bool, logf 
 		return
 	}
 
-	logf("Entering message loop (background idle guard, idleMinutes=%d)", idleMinutes)
+	logf("Entering message loop (background idle guard, idleMinutes=%d)", s.idleMinutes)
 	if err := g.run(); err != nil {
 		logf("EXCEPTION %v", err)
 		return
@@ -204,8 +236,8 @@ func runBackground(idleMinutes int, heartbeatMs uint32, startEnabled bool, logf 
 }
 
 // syncAutostart keeps the Startup shortcut in line with the autostart
-// setting, so an edited config.yaml takes effect on the next start without
-// re-running Setup. Only the installed copy - the one next to config.yaml -
+// setting, at every start and whenever config.yaml is saved, so an edit
+// takes effect without re-running Setup. Only the installed copy - the one next to config.yaml -
 // does this, so running a build from anywhere else never repoints
 // autostart at it.
 func syncAutostart(enabled bool, logf logFunc) {

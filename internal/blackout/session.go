@@ -92,6 +92,18 @@ func (s *Session) HandleTimer(id uintptr) {
 	s.heartbeat.handleTimer(id)
 }
 
+// SetHeartbeat restarts the Caps Lock heartbeat at a new interval (see
+// HeartbeatMs). Safe to call on nil.
+func (s *Session) SetHeartbeat(heartbeatMs uint32) error {
+	if s == nil {
+		return nil
+	}
+	s.heartbeat.stop()
+	var err error
+	s.heartbeat, err = startHeartbeat(heartbeatMs)
+	return err
+}
+
 // scheduleRefit (re)starts the re-fit timer, so a burst of display
 // change messages leads to a single re-fit. Safe to call on nil.
 func (s *Session) scheduleRefit() {

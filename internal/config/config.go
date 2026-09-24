@@ -33,6 +33,8 @@ const fileName = "config.yaml"
 
 const template = `# StayWakeBlackScreen configuration
 #
+# Changes apply as soon as you save this file.
+#
 # idle_minutes: minutes of inactivity (no keyboard/mouse input) before the
 # screen blacks out. Can still be overridden per-run with -idle-minutes.
 idle_minutes: %d
@@ -45,7 +47,7 @@ heartbeat_seconds: %d
 
 # start_enabled: whether the idle guard is active as soon as the program
 # starts (true), or starts paused - no blackout, no sleep blocking - until
-# enabled from the tray menu (false).
+# enabled from the tray menu (false). Only read when the program starts.
 start_enabled: %t
 
 ` + autostartBlock
@@ -54,8 +56,7 @@ start_enabled: %t
 // config.yaml written before the setting existed.
 const autostartBlock = `# autostart: whether the idle guard starts in the background when you
 # sign in to Windows (true), through a shortcut in your Startup folder, or
-# not (false). Setup sets it to match what you chose to install. Applied
-# the next time the program starts.
+# not (false). Setup sets it to match what you chose to install.
 autostart: %t
 `
 

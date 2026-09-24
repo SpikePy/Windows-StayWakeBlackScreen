@@ -28,8 +28,9 @@ const (
 // A copy of the program opened for an instant black screen asks the
 // guard to black out through its tray window (see blackoutNow).
 type guard struct {
-	logf        func(format string, args ...any)
-	heartbeatMs uint32
+	logf     func(format string, args ...any)
+	settings settings
+	reload   func() (settings, error)
 
 	enabled   bool
 	idle      *blackout.IdleTracker
@@ -40,22 +41,29 @@ type guard struct {
 	trayIcon uintptr
 }
 
-func newGuard(logf func(format string, args ...any), idleThresholdMs int32, heartbeatMs uint32, enabled bool) *guard {
+// newGuard returns a guard running with s. reload reads the settings
+// again, for when config.yaml is saved.
+func newGuard(logf func(format string, args ...any), s settings, reload func() (settings, error), enabled bool) *guard {
 	return &guard{
-		logf:        logf,
-		heartbeatMs: heartbeatMs,
-		enabled:     enabled,
-		idle:        blackout.NewIdleTracker(idleThresholdMs, blackout.GetTickCount()),
+		logf:     logf,
+		settings: s,
+		reload:   reload,
+		enabled:  enabled,
+		idle:     blackout.NewIdleTracker(blackout.IdleThresholdMs(s.idleMinutes), blackout.GetTickCount()),
 	}
 }
 
 // start creates the tray icon and, if enabled, starts the idle countdown.
 func (g *guard) start() error {
 	var err error
-	if g.trayHwnd, err = tray.NewWindow(g.blackoutNow, g.showMenu, g.blackoutNow); err != nil {
+	if g.trayHwnd, err = tray.NewWindow(g.blackoutNow, g.showMenu, g.blackoutNow, g.configChanged); err != nil {
 		return fmt.Errorf("creating tray window: %w", err)
 	}
 	g.applyTrayIcon()
+	hwnd := g.trayHwnd
+	if err := config.Watch(func() { tray.NotifyConfigChanged(hwnd) }); err != nil {
+		g.logf("WARNING config.yaml changes will apply only on the next start: %v", err)
+	}
 	if g.enabled {
 		g.idle.Reset(blackout.GetTickCount())
 		return g.checkIdle()
@@ -143,7 +151,7 @@ func (g *guard) stopIdleTimer() {
 
 func (g *guard) enterBlackout(reason string) error {
 	g.logf("%s - entering blackout", reason)
-	s, err := blackout.Start(g.heartbeatMs, g.logf)
+	s, err := blackout.Start(blackout.HeartbeatMs(g.settings.heartbeatSeconds), g.logf)
 	if err != nil {
 		s.End() // undo whatever part of the blackout did start
 		return fmt.Errorf("entering blackout: %w", err)
@@ -209,6 +217,38 @@ func (g *guard) setEnabled(v bool) {
 		blackout.RestoreExecutionState()
 	}
 	g.applyTrayIcon()
+}
+
+// configChanged applies a saved config.yaml without a restart. A file
+// that can't be read or parsed - often one still being edited - is
+// logged and changes nothing.
+func (g *guard) configChanged() {
+	s, err := g.reload()
+	if err != nil {
+		g.logf("WARNING config.yaml changed but can't be used, keeping the current settings: %v", err)
+		return
+	}
+	old := g.settings
+	g.settings = s
+	if s.autostart != old.autostart {
+		syncAutostart(s.autostart, g.logf)
+	}
+	if s.heartbeatSeconds != old.heartbeatSeconds {
+		g.logf("heartbeat_seconds is now %d", s.heartbeatSeconds)
+		if err := g.session.SetHeartbeat(blackout.HeartbeatMs(s.heartbeatSeconds)); err != nil {
+			g.logf("EXCEPTION restarting heartbeat: %v", err)
+		}
+	}
+	if s.idleMinutes != old.idleMinutes {
+		g.logf("idle_minutes is now %d", s.idleMinutes)
+		g.idle.SetThreshold(blackout.IdleThresholdMs(s.idleMinutes))
+		if g.enabled && g.session == nil {
+			if err := g.checkIdle(); err != nil {
+				g.logf("EXCEPTION %v", err)
+				blackout.PostQuitMessage()
+			}
+		}
+	}
 }
 
 // showMenu is the tray icon's right-click action.

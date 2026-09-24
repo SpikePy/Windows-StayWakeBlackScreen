@@ -85,9 +85,10 @@ const trayWindowClassName = "StayWakeTrayHiddenWindow"
 // window and runs its message loop (NewWindow, SetIcon, RemoveIcon, and
 // wndProcCB, which that loop dispatches), so no locking is needed.
 var (
-	onLeftClick   func()
-	onRightClick  func()
-	onBlackoutNow func()
+	onLeftClick     func()
+	onRightClick    func()
+	onBlackoutNow   func()
+	onConfigChanged func()
 
 	// taskbarCreated is the "TaskbarCreated" message Explorer broadcasts
 	// whenever it (re)starts. By then every tray icon it showed is gone,
@@ -118,6 +119,11 @@ var (
 				onBlackoutNow()
 			}
 			return 0
+		case message == win32.WMConfigChanged:
+			if onConfigChanged != nil {
+				onConfigChanged()
+			}
+			return 0
 		case taskbarCreated != 0 && message == taskbarCreated:
 			if shown.hwnd != 0 {
 				shown.added = false
@@ -130,13 +136,13 @@ var (
 )
 
 // NewWindow creates a hidden window that owns the tray icon and any popup
-// menu, and wires its callbacks: left and right clicks on the icon, and a
+// menu, and wires its callbacks: left and right clicks on the icon, a
 // black-screen request from another copy of the program (see
-// RequestBlackout). It must be created on, and its messages pumped from,
+// RequestBlackout), and a saved config.yaml (see NotifyConfigChanged). It must be created on, and its messages pumped from,
 // the same OS thread for the lifetime of the program (see
 // runtime.LockOSThread in main).
-func NewWindow(left, right, blackoutNow func()) (uintptr, error) {
-	onLeftClick, onRightClick, onBlackoutNow = left, right, blackoutNow
+func NewWindow(left, right, blackoutNow, configChanged func()) (uintptr, error) {
+	onLeftClick, onRightClick, onBlackoutNow, onConfigChanged = left, right, blackoutNow, configChanged
 	if r, _, _ := procRegisterWindowMessageW.Call(uintptr(unsafe.Pointer(win32.UTF16Ptr("TaskbarCreated")))); r != 0 {
 		taskbarCreated = uint32(r)
 	}
@@ -165,6 +171,13 @@ func RequestBlackout() bool {
 	}
 	win32.PostMessage(hwnd, win32.WMBlackoutNow, 0, 0)
 	return true
+}
+
+// NotifyConfigChanged tells the tray window, from any goroutine, that
+// config.yaml was saved; its configChanged callback then runs on the
+// window's own thread.
+func NotifyConfigChanged(hwnd uintptr) {
+	win32.PostMessage(hwnd, win32.WMConfigChanged, 0, 0)
 }
 
 func newNotifyIconData(hwnd, hIcon uintptr, tooltip string) notifyIconDataW {

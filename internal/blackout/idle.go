@@ -21,6 +21,10 @@ func NewIdleTracker(thresholdMs int32, now uint32) *IdleTracker {
 // re-enabling (idle time that built up while disabled mustn't count).
 func (t *IdleTracker) Reset(now uint32) { t.lastActivity = now }
 
+// SetThreshold changes the idle time needed to black out, keeping the
+// countdown's start, so time already idle counts towards the new value.
+func (t *IdleTracker) SetThreshold(thresholdMs int32) { t.thresholdMs = thresholdMs }
+
 // Remaining reports how many milliseconds are left until the idle
 // threshold is reached, given the current tick and the OS's last-input
 // tick. Zero or less means it has been reached.

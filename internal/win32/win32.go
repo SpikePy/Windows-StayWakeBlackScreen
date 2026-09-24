@@ -45,6 +45,10 @@ const (
 	// window by a copy of the program opened for an instant black screen,
 	// so the guard blacks out instead of a second blackout starting.
 	WMBlackoutNow = wmApp + 3
+
+	// WMConfigChanged is posted to the background guard's tray window,
+	// from the goroutine watching config.yaml, when the file was saved.
+	WMConfigChanged = wmApp + 4
 )
 
 // CWUseDefault is CW_USEDEFAULT, for CreateWindow's position and size.

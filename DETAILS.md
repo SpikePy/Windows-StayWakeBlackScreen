@@ -125,12 +125,16 @@ autostart: true
 | --- | --- | --- |
 | `idle_minutes` | `3` | Minutes of inactivity (no real keyboard/mouse input) before the idle guard blacks out the screen. |
 | `heartbeat_seconds` | `5` | While blacked out, how often (seconds) the program toggles Caps Lock as a harmless "still alive" signal that keeps Windows from treating the session as idle. |
-| `start_enabled` | `true` | Whether the idle guard is active as soon as it starts. Set to `false` to start paused — no sleep blocking, no blackout — until enabled from the tray menu. |
-| `autostart` | `true` | Whether the idle guard starts in the background when you sign in, through a shortcut in your Startup folder. Setup sets it to match your choice, and the installed program adds or removes the shortcut to match every time it starts, so a change applies on the next start. |
+| `start_enabled` | `true` | Whether the idle guard is active as soon as it starts. Set to `false` to start paused — no sleep blocking, no blackout — until enabled from the tray menu. Read only when the program starts. |
+| `autostart` | `true` | Whether the idle guard starts in the background when you sign in, through a shortcut in your Startup folder. Setup sets it to match your choice, and the installed program adds or removes the shortcut to match every time it starts, and whenever the file is saved. |
 
-Edit a value and restart the program to apply it. Each option also has a
+The running idle guard watches `config.yaml` and applies a change as soon
+as the file is saved - a new `idle_minutes` counts the time already idle,
+a new `heartbeat_seconds` applies even during a blackout. A file that
+can't be parsed (say, half-way through an edit) is ignored until the next
+save, and the current settings stay. Each option also has a
 matching command-line flag (see [Flags](#flags)) that overrides the file
-for that run only. Config files from older versions may still contain a
+for that whole run, file changes included. Config files from older versions may still contain a
 `poll_ms` line; it's no longer used (nothing polls any more) and is
 ignored.
 
