@@ -243,7 +243,10 @@ func runDialog(o options) int {
 		kind:          pageChoose,
 	}.pack()
 
-	if hr, _, _ := procTaskDialogIndirect.Call(first.addr(), 0, 0, 0); hr != 0 {
+	// The checkbox's final state is tracked through TDN_VERIFICATION_CLICKED
+	// instead, but Windows disables the checkbox if this pointer is NULL.
+	var checked int32
+	if hr, _, _ := procTaskDialogIndirect.Call(first.addr(), 0, 0, uintptr(unsafe.Pointer(&checked))); hr != 0 {
 		messageBox(fmt.Sprintf("Setup couldn't open its window (error 0x%08X).", hr))
 		return 1
 	}
