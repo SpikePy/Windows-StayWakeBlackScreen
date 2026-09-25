@@ -25,7 +25,7 @@ without input:
 - whether to start it right after installing.
 
 Then click **Install/Update**. Run Setup again to update, to change those
-choices, or to **Uninstall**; **Close** changes nothing.
+choices, or to **Uninstall**; **Cancel** changes nothing.
 Everything is installed for your account only, in
 `%LOCALAPPDATA%\StayWakeBlackScreen\`, and nothing needs administrator
 rights.

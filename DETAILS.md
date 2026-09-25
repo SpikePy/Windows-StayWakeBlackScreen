@@ -80,7 +80,7 @@ start out on. Three buttons act on them:
   the screen in the middle of setup.
 - **Uninstall** removes both shortcuts, stops the program and deletes
   `%LOCALAPPDATA%\StayWakeBlackScreen\`, including `config.yaml`.
-- **Close** leaves everything as it is, and so do Escape and the title
+- **Cancel** leaves everything as it is, and so do Escape and the title
   bar's X. Just opening Setup doesn't create or change anything.
 
 Nothing happens until you click one of the buttons. Setup then shows

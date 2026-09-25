@@ -11,8 +11,9 @@ package main
 // Page one asks whether the idle guard should start at every sign-in
 // (radio buttons, preselected from the current config) and whether to
 // start it right after installing (the checkbox), and offers
-// Install/Update, Uninstall and Close. Nothing happens until one of them is clicked. A
-// progress page follows, then a result page that stays until it's closed.
+// Install/Update, Uninstall and Cancel. Nothing happens until one of them
+// is clicked. A progress page follows, then a result page that stays until
+// it's closed.
 
 import (
 	"encoding/binary"
@@ -62,8 +63,9 @@ const (
 	sOK    = 0
 	sFalse = 1
 
-	// idCancel is Close on every page, so Escape and the title bar's X,
-	// which Windows reports as IDCANCEL, do exactly what Close does.
+	// idCancel is Cancel, or Close on the result page, so Escape and the
+	// title bar's X, which Windows reports as IDCANCEL, do exactly what
+	// that button does.
 	idCancel        = 2
 	buttonInstall   = 101
 	buttonUninstall = 102
@@ -103,8 +105,8 @@ var (
 	kept   []*packedPage
 )
 
-// page describes one page of the dialog. Every page also gets a Close
-// button (idCancel).
+// page describes one page of the dialog. Every page also gets a Cancel
+// button (idCancel), labelled Close on the result page.
 type page struct {
 	instruction, content string
 	verification         string // the checkbox's label; none if empty
@@ -164,7 +166,12 @@ func (pg page) pack() *packedPage {
 	le := binary.LittleEndian
 
 	flags := pg.flags | tdfAllowDialogCancellation
-	buttons := append(append([]button{}, pg.buttons...), button{idCancel, "Close"})
+	// Once Setup has finished there's nothing left to cancel.
+	cancel := "Cancel"
+	if pg.kind == pageResult {
+		cancel = "Close"
+	}
+	buttons := append(append([]button{}, pg.buttons...), button{idCancel, cancel})
 
 	le.PutUint32(p.buf[0:], 160)                           // cbSize
 	le.PutUint64(p.buf[12:], uint64(win32.ModuleHandle())) // hInstance
