@@ -66,8 +66,9 @@ and three buttons act on that:
 
 - **Install/Update** installs or updates the program for the chosen use:
   - *Idle guard*: turns the `autostart` setting on, adds the Startup
-    shortcut (which passes `-background`), removes the Start menu entry
-    and starts the guard.
+    shortcut (which passes `-background`), adds the Start menu entry and
+    starts the guard. Opening the entry asks the running guard to black
+    out.
   - *Instant black screen*: turns `autostart` off, removes the Startup
     shortcut and adds a Start menu entry that opens the program without
     arguments. It doesn't start the program - that would black out the

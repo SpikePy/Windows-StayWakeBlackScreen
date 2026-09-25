@@ -310,7 +310,8 @@ func resultPage(action string, err error) page {
 		pg.instruction = "The idle guard is running"
 		pg.content = fmt.Sprintf("Look for the monitor icon in the notification area. After %s without keyboard or mouse "+
 			"input it blacks out the screen; press Escape to bring the screen back. It starts again whenever you sign in. "+
-			"Right-click the icon for Blackout, Disable, Configure and Exit.", minutes(cfg.IdleMinutes))
+			"Right-click the icon for Blackout, Disable, Configure and Exit. To black out the screen right away, open "+
+			"StayWakeBlackScreen from the Start menu.", minutes(cfg.IdleMinutes))
 	case action == "instant":
 		pg.instruction = "StayWakeBlackScreen is in your Start menu"
 		pg.content = "Open it whenever you want the screen black: press the Windows key, type StayWake and press Enter. " +

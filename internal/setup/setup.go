@@ -39,7 +39,8 @@ const (
 	// Background is the idle guard: started right after installing, and
 	// at every sign-in through the Startup shortcut.
 	Background Use = iota
-	// Instant is a Start menu entry that blacks out the screen when opened.
+	// Instant is only the Start menu entry, which blacks out the screen
+	// when opened; Background gets that entry too.
 	Instant
 )
 
@@ -69,7 +70,8 @@ type InstallOptions struct {
 // it under the current user's %LOCALAPPDATA%, and sets it up for the chosen
 // use. For Background it turns the autostart setting on, keeps the Startup
 // shortcut in line with it and starts the guard; for Instant it turns
-// autostart off and adds the Start menu entry instead. Any running copy is
+// autostart off. Either way it adds the Start menu entry that blacks out
+// the screen at once. Any running copy is
 // stopped first so the file can be replaced, and re-running replaces
 // shortcuts rather than adding second ones, so it doubles as the update.
 func Install(opts InstallOptions) error {
@@ -127,8 +129,10 @@ func Install(opts InstallOptions) error {
 		}
 	}
 
-	progress("Updating the Start menu...")
-	if err := shortcut.SetStartMenu(!background, target); err != nil {
+	// Both uses get the Start menu entry: with the guard running, opening
+	// it just asks the guard to black out.
+	progress("Adding the Start menu entry...")
+	if err := shortcut.SetStartMenu(true, target); err != nil {
 		return fmt.Errorf("updating the Start menu: %w", err)
 	}
 

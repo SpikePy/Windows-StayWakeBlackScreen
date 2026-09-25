@@ -20,7 +20,8 @@ StayWakeBlackScreen:
 
 - **Idle guard** — runs in the background with a tray icon and blacks out
   the screen after a few minutes without input. It starts again whenever
-  you sign in.
+  you sign in. It also gets a Start menu entry that blacks out the screen
+  right away.
 - **Instant black screen** — adds StayWakeBlackScreen to the Start menu;
   opening it blacks out the screen right away.
 
