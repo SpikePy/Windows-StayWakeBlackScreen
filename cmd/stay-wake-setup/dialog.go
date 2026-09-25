@@ -3,14 +3,15 @@
 package main
 
 // Setup's window is a Windows task dialog (TaskDialogIndirect): the
-// system's own dialog with radio buttons, push buttons, a progress bar and
-// pages, so Setup needs no GUI toolkit. Task dialogs live in version 6 of
+// system's own dialog with radio buttons, a checkbox, push buttons, a
+// progress bar and pages, so Setup needs no GUI toolkit. Task dialogs live in version 6 of
 // the common controls, which setup.manifest - embedded through
 // rsrc_windows_amd64.syso - asks for.
 //
-// Page one asks how StayWakeBlackScreen should be used (radio buttons,
-// preselected from the current config) and offers Install/Update,
-// Uninstall and Close. Nothing happens until one of them is clicked. A
+// Page one asks whether the idle guard should start at every sign-in
+// (radio buttons, preselected from the current config) and whether to
+// start it right after installing (the checkbox), and offers
+// Install/Update, Uninstall and Close. Nothing happens until one of them is clicked. A
 // progress page follows, then a result page that stays until it's closed.
 
 import (
@@ -43,15 +44,17 @@ const (
 	tdmSetElementText        = wmUser + 108
 	tdmEnableButton          = wmUser + 111
 
-	tdnCreated            = 0
-	tdnNavigated          = 1
-	tdnButtonClicked      = 2
-	tdnRadioButtonClicked = 6
+	tdnCreated             = 0
+	tdnNavigated           = 1
+	tdnButtonClicked       = 2
+	tdnRadioButtonClicked  = 6
+	tdnVerificationClicked = 8
 
 	tdeContent = 0
 
 	tdfUseHIconMain            = 0x0002
 	tdfAllowDialogCancellation = 0x0008
+	tdfVerificationChecked     = 0x0100
 	tdfShowMarqueeProgressBar  = 0x0400
 
 	tdErrorIcon = 0xFFFE // MAKEINTRESOURCE(-2)
@@ -65,8 +68,8 @@ const (
 	buttonInstall   = 101
 	buttonUninstall = 102
 
-	radioBackground = 201
-	radioInstant    = 202
+	radioAutostart   = 201
+	radioNoAutostart = 202
 )
 
 // Which page is showing; the callback gets it as lpCallbackData.
@@ -87,8 +90,9 @@ var (
 	appIcon        uintptr
 
 	// Only touched on the dialog's thread, in dialogProc and what it calls.
-	busy     bool  // the progress page is showing
-	selected int32 = radioBackground
+	busy      bool // the progress page is showing
+	autostart = true
+	launch    = true
 
 	// failed is set by the worker and read once the dialog has closed.
 	failed atomic.Bool
@@ -103,6 +107,7 @@ var (
 // button (idCancel).
 type page struct {
 	instruction, content string
+	verification         string // the checkbox's label; none if empty
 	flags                uint32
 	buttons, radios      []button
 	defaultButton        int32
@@ -182,6 +187,7 @@ func (pg page) pack() *packedPage {
 		le.PutUint64(p.buf[80:], p.buttonArray(pg.radios)) // pRadioButtons
 		le.PutUint32(p.buf[88:], uint32(pg.defaultRadio))  // nDefaultRadioButton
 	}
+	le.PutUint64(p.buf[92:], p.str(pg.verification))                                                                                    // pszVerificationText
 	le.PutUint64(p.buf[132:], p.str(fmt.Sprintf("Setup %s - installs for your account only, no administrator rights needed", version))) // pszFooter
 	le.PutUint64(p.buf[140:], uint64(dialogCallback))                                                                                   // pfCallback
 	le.PutUint64(p.buf[148:], uint64(pg.kind))                                                                                          // lpCallbackData
@@ -207,20 +213,31 @@ func runDialog(o options) int {
 		defer tray.DestroyIconHandle(icon)
 	}
 	// Preselect how it's used today, without creating anything on a PC
-	// where it was never installed.
+	// where it was never installed. Someone who turned autostart off
+	// likely doesn't want the guard started now either.
 	if cfg, found := config.Existing(); found && !cfg.Autostart {
-		selected = radioInstant
+		autostart, launch = false, false
+	}
+	defaultRadio, flags := int32(radioAutostart), uint32(0)
+	if !autostart {
+		defaultRadio = radioNoAutostart
+	}
+	if launch {
+		flags = tdfVerificationChecked
 	}
 
 	first := page{
-		instruction: "How do you want to use StayWakeBlackScreen?",
-		content: "It keeps your PC awake behind a black screen, without locking it. " +
-			"Press Escape to end a black screen.",
+		instruction: "Install StayWakeBlackScreen?",
+		content: "It keeps your PC awake behind a black screen, without locking it. Its Start menu entry blacks out " +
+			"the screen at once; the idle guard runs in the notification area and does it after a few minutes " +
+			"without input. Press Escape to end a black screen.",
 		radios: []button{
-			{radioBackground, "Idle guard: runs in the notification area and blacks out the screen after a few minutes without input; starts when you sign in"},
-			{radioInstant, "Instant black screen: a Start menu entry that blacks out the screen as soon as you open it"},
+			{radioAutostart, "Start the idle guard whenever I sign in (adds a shortcut to your Startup folder)"},
+			{radioNoAutostart, "Don't start the idle guard when I sign in"},
 		},
-		defaultRadio:  selected,
+		defaultRadio:  defaultRadio,
+		verification:  "Start the idle guard right after installing",
+		flags:         flags,
 		buttons:       []button{{buttonInstall, "Install/Update"}, {buttonUninstall, "Uninstall"}},
 		defaultButton: buttonInstall,
 		kind:          pageChoose,
@@ -247,11 +264,13 @@ func dialogProc(hwnd, msg, wParam, lParam, refData uintptr) uintptr {
 			win32.SendMessage(hwnd, tdmEnableButton, idCancel, 0)
 		}
 	case tdnRadioButtonClicked:
-		selected = int32(wParam)
+		autostart = wParam == radioAutostart
+	case tdnVerificationClicked:
+		launch = wParam != 0
 	case tdnButtonClicked:
 		switch wParam {
 		case buttonInstall:
-			start(hwnd, actionFor(selected))
+			start(hwnd, "install")
 			return sFalse // keep the dialog open
 		case buttonUninstall:
 			start(hwnd, "uninstall")
@@ -265,14 +284,8 @@ func dialogProc(hwnd, msg, wParam, lParam, refData uintptr) uintptr {
 	return sOK
 }
 
-func actionFor(radio int32) string {
-	if radio == radioInstant {
-		return "instant"
-	}
-	return "background"
-}
-
-// start switches to the progress page and runs action on a separate
+// start switches to the progress page and runs action, with the choices
+// from page one, on a separate
 // goroutine, so the dialog keeps painting meanwhile. The worker only
 // talks to the dialog through SendMessage, which Windows hands to the
 // dialog's thread.
@@ -289,36 +302,48 @@ func start(hwnd uintptr, action string) {
 		kind:          pageProgress,
 	})
 
+	o := dialogOpts
+	o.autostart, o.launch = autostart, launch
 	go func() {
-		err := run(action, dialogOpts, func(step string) { setContent(hwnd, step) })
+		err := run(action, o, func(step string) { setContent(hwnd, step) })
 		failed.Store(err != nil)
-		navigate(hwnd, resultPage(action, err))
+		navigate(hwnd, resultPage(action, o, err))
 	}()
 }
 
 // resultPage is the last page: what to do next, or what went wrong. It
 // stays until it's closed.
-func resultPage(action string, err error) page {
+func resultPage(action string, o options, err error) page {
 	pg := page{defaultButton: idCancel, kind: pageResult}
 	switch {
 	case err != nil:
 		pg.instruction = "Setup didn't finish"
 		pg.content = err.Error()
 		pg.errorIcon = true
-	case action == "background":
+	case action == "uninstall":
+		pg.instruction = "StayWakeBlackScreen has been removed"
+		pg.content = "Its program, shortcuts and settings are gone."
+	case o.launch:
 		cfg, _ := config.Load()
 		pg.instruction = "The idle guard is running"
 		pg.content = fmt.Sprintf("Look for the monitor icon in the notification area. After %s without keyboard or mouse "+
-			"input it blacks out the screen; press Escape to bring the screen back. It starts again whenever you sign in. "+
-			"Right-click the icon for Blackout, Disable, Configure and Exit. To black out the screen right away, open "+
-			"StayWakeBlackScreen from the Start menu.", minutes(cfg.IdleMinutes))
-	case action == "instant":
+			"input it blacks out the screen; press Escape to bring the screen back. ", minutes(cfg.IdleMinutes))
+		if o.autostart {
+			pg.content += "It starts again whenever you sign in. "
+		} else {
+			pg.content += "It won't start by itself when you sign in again; run Setup to change that. "
+		}
+		pg.content += "Right-click the icon for Blackout, Disable, Configure and Exit. To black out the screen right away, " +
+			"open StayWakeBlackScreen from the Start menu."
+	case o.autostart:
+		pg.instruction = "StayWakeBlackScreen is installed"
+		pg.content = "The idle guard starts the next time you sign in. To black out the screen right away, open " +
+			"StayWakeBlackScreen from the Start menu: press the Windows key, type StayWake and press Enter. " +
+			"Press Escape to bring the screen back."
+	default:
 		pg.instruction = "StayWakeBlackScreen is in your Start menu"
 		pg.content = "Open it whenever you want the screen black: press the Windows key, type StayWake and press Enter. " +
 			"Press Escape to bring the screen back."
-	default:
-		pg.instruction = "StayWakeBlackScreen has been removed"
-		pg.content = "Its program, shortcuts and settings are gone."
 	}
 	return pg
 }

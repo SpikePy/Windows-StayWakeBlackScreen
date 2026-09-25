@@ -2,7 +2,7 @@
 
 // Command stay-wake-setup installs, updates and uninstalls
 // StayWakeBlackScreen. Opened normally it shows a small Windows dialog
-// with the three choices (see dialog.go); -mode runs one of them directly
+// with the three buttons (see dialog.go); -mode runs one of them directly
 // for scripts, printing its steps to the console it was started from.
 package main
 
@@ -23,19 +23,20 @@ var version = "dev"
 
 // options are the flags that shape what an action does.
 type options struct {
-	installDir                       string
-	noLaunch, noAutostart, keepFiles bool
+	installDir                                  string
+	autostart, launch, keepAutostart, keepFiles bool
 }
 
 func main() {
-	mode := flag.String("mode", "", "run without the dialog: background (or install), instant, or uninstall")
+	mode := flag.String("mode", "", "run without the dialog: install (or background), instant, or uninstall")
 	installDir := flag.String("install-dir", "", "directory to install into/remove from (default: %LOCALAPPDATA%\\StayWakeBlackScreen)")
-	noLaunch := flag.Bool("no-launch", false, "background: install without starting the idle guard now")
-	noAutostart := flag.Bool("no-autostart", false, "leave the autostart setting and Startup shortcut as they are (install only)")
+	autostart := flag.Bool("autostart", true, "install: start the idle guard at every sign-in, through a Startup-folder shortcut")
+	noLaunch := flag.Bool("no-launch", false, "install: don't start the idle guard now")
+	noAutostart := flag.Bool("no-autostart", false, "install: leave the autostart setting and Startup shortcut as they are, ignoring -autostart")
 	keepFiles := flag.Bool("keep-files", false, "remove the shortcuts and stop the program, but don't delete the installed files (uninstall only)")
 	flag.Parse()
 
-	o := options{*installDir, *noLaunch, *noAutostart, *keepFiles}
+	o := options{*installDir, *autostart, !*noLaunch, *noAutostart, *keepFiles}
 	if *mode == "" {
 		os.Exit(runDialog(o))
 	}
@@ -49,20 +50,22 @@ func main() {
 
 // run performs one Setup action, reporting each step to progress.
 func run(action string, o options, progress func(string)) error {
-	install := func(use setup.Use) error {
+	install := func() error {
 		return setup.Install(setup.InstallOptions{
-			Use:         use,
-			InstallDir:  o.installDir,
-			NoLaunch:    o.noLaunch,
-			NoAutostart: o.noAutostart,
-			Progress:    progress,
+			InstallDir:    o.installDir,
+			Autostart:     o.autostart,
+			KeepAutostart: o.keepAutostart,
+			Launch:        o.launch,
+			Progress:      progress,
 		})
 	}
 	switch action {
-	case "background", "install":
-		return install(setup.Background)
+	case "install", "background":
+		return install()
 	case "instant":
-		return install(setup.Instant)
+		// Only the Start menu entry: no idle guard, now or at sign-in.
+		o.autostart, o.launch = false, false
+		return install()
 	case "uninstall":
 		return setup.Uninstall(setup.UninstallOptions{
 			InstallDir: o.installDir,
@@ -70,7 +73,7 @@ func run(action string, o options, progress func(string)) error {
 			Progress:   progress,
 		})
 	}
-	return fmt.Errorf("unknown -mode %q (want background, instant or uninstall)", action)
+	return fmt.Errorf("unknown -mode %q (want install, instant or uninstall)", action)
 }
 
 var (

@@ -59,20 +59,25 @@ or Setup, which stops it when updating or uninstalling.
 
 ## Setup
 
-`Setup_StayWakeBlackScreen.exe` opens a small Windows dialog. Two radio
-buttons choose how the program is used - preselected from your current
-`config.yaml`, or the idle guard on a PC where it was never installed -
-and three buttons act on that:
+`Setup_StayWakeBlackScreen.exe` opens a small Windows dialog. It asks
+two things about the idle guard:
 
-- **Install/Update** installs or updates the program for the chosen use:
-  - *Idle guard*: turns the `autostart` setting on, adds the Startup
-    shortcut (which passes `-background`), adds the Start menu entry and
-    starts the guard. Opening the entry asks the running guard to black
-    out.
-  - *Instant black screen*: turns `autostart` off, removes the Startup
-    shortcut and adds a Start menu entry that opens the program without
-    arguments. It doesn't start the program - that would black out the
-    screen in the middle of setup.
+- Two radio buttons: start it whenever you sign in, or not. This is the
+  `autostart` setting.
+- A checkbox: start it right after installing.
+
+Both are preselected from your current `config.yaml`: on, unless
+`autostart` is off there. On a PC where it was never installed, both
+start out on. Three buttons act on them:
+
+- **Install/Update** installs or updates the program and always adds a
+  Start menu entry that opens it without arguments, which blacks out the
+  screen at once. While the guard runs, opening the entry asks the guard
+  to black out. Setup then writes your autostart choice into `autostart`,
+  adds or removes the Startup shortcut (which passes `-background`) to
+  match, and starts the guard if the checkbox is ticked. Setup never
+  opens the instant black screen itself, because that would black out
+  the screen in the middle of setup.
 - **Uninstall** removes both shortcuts, stops the program and deletes
   `%LOCALAPPDATA%\StayWakeBlackScreen\`, including `config.yaml`.
 - **Close** leaves everything as it is, and so do Escape and the title
@@ -81,7 +86,7 @@ and three buttons act on that:
 Nothing happens until you click one of the buttons. Setup then shows
 its progress and the result, which stays open until you close it - with
 the error spelled out if something went wrong. Running Setup again later
-updates the program or switches between the two uses.
+updates the program or changes those choices.
 
 Setup always installs the latest release - found through GitHub's plain
 release links, not the GitHub API, so there's no API rate limit to run
@@ -99,16 +104,19 @@ For scripts, `-mode` runs one action without the dialog and prints its
 steps to the console it was started from (exit code 1 on failure):
 
 ```
-Setup_StayWakeBlackScreen.exe -mode background    (or -mode install)
-Setup_StayWakeBlackScreen.exe -mode instant
+Setup_StayWakeBlackScreen.exe -mode install      (or -mode background)
+Setup_StayWakeBlackScreen.exe -mode install -autostart=false -no-launch
+Setup_StayWakeBlackScreen.exe -mode instant      (same as the line above)
 Setup_StayWakeBlackScreen.exe -mode uninstall
 ```
 
-Other flags: `-install-dir <path>` (override the install location),
+`-mode install` turns autostart on and starts the idle guard unless told
+otherwise. Other flags: `-install-dir <path>` (override the install
+location), `-autostart=false` (don't start the idle guard at sign-in),
 `-no-launch` (don't start the idle guard after installing it),
 `-no-autostart` (leave the `autostart` setting and Startup shortcut as
-they are), `-keep-files` (uninstall: remove the shortcuts and stop the
-program, but keep the files).
+they are, ignoring `-autostart`), `-keep-files` (uninstall: remove the
+shortcuts and stop the program, but keep the files).
 
 ## Settings reference
 

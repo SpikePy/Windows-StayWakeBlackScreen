@@ -1,9 +1,9 @@
 //go:build windows
 
 // Package setup implements what Setup_StayWakeBlackScreen.exe does:
-// installing StayWakeBlackScreen.exe for either of its two uses - the idle
-// guard that starts in the background at sign-in, or the instant black
-// screen opened from the Start menu - and uninstalling it again.
+// installing StayWakeBlackScreen.exe with its Start menu entry, optionally
+// starting the idle guard now and at every sign-in, and uninstalling it
+// again.
 package setup
 
 import (
@@ -32,18 +32,6 @@ const (
 	userAgent = "stay-wake-setup"
 )
 
-// Use is what the program gets installed for.
-type Use int
-
-const (
-	// Background is the idle guard: started right after installing, and
-	// at every sign-in through the Startup shortcut.
-	Background Use = iota
-	// Instant is only the Start menu entry, which blacks out the screen
-	// when opened; Background gets that entry too.
-	Instant
-)
-
 // resolveInstallDir returns dir, or %LOCALAPPDATA%\StayWakeBlackScreen if
 // dir is empty.
 func resolveInstallDir(dir string) (string, error) {
@@ -59,21 +47,20 @@ func resolveInstallDir(dir string) (string, error) {
 
 // InstallOptions configures Install.
 type InstallOptions struct {
-	Use         Use
-	InstallDir  string            // defaults to %LOCALAPPDATA%\StayWakeBlackScreen if empty
-	NoLaunch    bool              // Background: don't start the guard now
-	NoAutostart bool              // leave the autostart setting and Startup shortcut as they are
-	Progress    func(step string) // told about each step as it starts; may be nil
+	InstallDir    string            // defaults to %LOCALAPPDATA%\StayWakeBlackScreen if empty
+	Autostart     bool              // start the idle guard at every sign-in, through the Startup shortcut
+	KeepAutostart bool              // leave the autostart setting and Startup shortcut as they are; Autostart is ignored
+	Launch        bool              // start the idle guard once installed
+	Progress      func(step string) // told about each step as it starts; may be nil
 }
 
 // Install downloads the latest released StayWakeBlackScreen.exe, installs
-// it under the current user's %LOCALAPPDATA%, and sets it up for the chosen
-// use. For Background it turns the autostart setting on, keeps the Startup
-// shortcut in line with it and starts the guard; for Instant it turns
-// autostart off. Either way it adds the Start menu entry that blacks out
-// the screen at once. Any running copy is
-// stopped first so the file can be replaced, and re-running replaces
-// shortcuts rather than adding second ones, so it doubles as the update.
+// it under the current user's %LOCALAPPDATA% and adds the Start menu entry
+// that blacks out the screen at once. It writes Autostart into config.yaml
+// and keeps the Startup shortcut in line with it, and with Launch starts
+// the idle guard. Any running copy is stopped first so the file can be
+// replaced, and re-running replaces shortcuts rather than adding second
+// ones, so it doubles as the update.
 func Install(opts InstallOptions) error {
 	progress := reporter(opts.Progress)
 	installDir, err := resolveInstallDir(opts.InstallDir)
@@ -114,29 +101,28 @@ func Install(opts InstallOptions) error {
 		return fmt.Errorf("removing the old idle program: %w", err)
 	}
 
-	background := opts.Use == Background
-	if !opts.NoAutostart {
-		if background {
+	if !opts.KeepAutostart {
+		if opts.Autostart {
 			progress("Turning on autostart...")
 		} else {
 			progress("Turning off autostart...")
 		}
-		if err := config.SetAutostart(background); err != nil {
+		if err := config.SetAutostart(opts.Autostart); err != nil {
 			return fmt.Errorf("updating config.yaml: %w", err)
 		}
-		if err := shortcut.SyncAutostart(background, target); err != nil {
+		if err := shortcut.SyncAutostart(opts.Autostart, target); err != nil {
 			return fmt.Errorf("updating autostart: %w", err)
 		}
 	}
 
-	// Both uses get the Start menu entry: with the guard running, opening
-	// it just asks the guard to black out.
+	// With the guard running, opening the entry just asks the guard to
+	// black out.
 	progress("Adding the Start menu entry...")
 	if err := shortcut.SetStartMenu(true, target); err != nil {
 		return fmt.Errorf("updating the Start menu: %w", err)
 	}
 
-	if background && !opts.NoLaunch {
+	if opts.Launch {
 		progress("Starting the idle guard...")
 		if err := exec.Command(target, shortcut.BackgroundArg).Start(); err != nil {
 			return fmt.Errorf("starting %s: %w", target, err)
