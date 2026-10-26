@@ -7,6 +7,7 @@ import (
 
 	"windows-stay-wake-black-screen/internal/blackout"
 	"windows-stay-wake-black-screen/internal/config"
+	"windows-stay-wake-black-screen/internal/hotkey"
 	"windows-stay-wake-black-screen/internal/tray"
 )
 
@@ -60,6 +61,7 @@ func (g *guard) start() error {
 		return fmt.Errorf("creating tray window: %w", err)
 	}
 	g.applyTrayIcon()
+	g.applyHotkey()
 	hwnd := g.trayHwnd
 	if err := config.Watch(func() { tray.NotifyConfigChanged(hwnd) }); err != nil {
 		g.logf("WARNING config.yaml changes will apply only on the next start: %v", err)
@@ -93,6 +95,8 @@ func (g *guard) run() error {
 			if err := g.handleEscape(); err != nil {
 				return err
 			}
+		case blackout.WMHotkeyPressed:
+			g.blackoutNow()
 		default:
 			blackout.Dispatch(m)
 		}
@@ -161,7 +165,7 @@ func (g *guard) enterBlackout(reason string) error {
 }
 
 // blackoutNow is the tray icon's left-click action, the tray menu's
-// "Blackout", and what a copy of the program opened for an instant black
+// "Blackout", the hotkey's action, and what a copy of the program opened for an instant black
 // screen asks for. It works whether or not the guard is enabled; a
 // disabled guard just has to keep Windows awake while the blackout lasts.
 func (g *guard) blackoutNow() {
@@ -239,6 +243,9 @@ func (g *guard) configChanged() {
 			g.logf("EXCEPTION restarting heartbeat: %v", err)
 		}
 	}
+	if s.hotkey != old.hotkey {
+		g.applyHotkey()
+	}
 	if s.idleMinutes != old.idleMinutes {
 		g.logf("idle_minutes is now %d", s.idleMinutes)
 		g.idle.SetThreshold(blackout.IdleThresholdMs(s.idleMinutes))
@@ -249,6 +256,22 @@ func (g *guard) configChanged() {
 			}
 		}
 	}
+}
+
+// applyHotkey starts watching for the hotkey setting's shortcut, or stops
+// if it's "none". A shortcut that can't be parsed (only possible from the
+// -hotkey flag; config.yaml falls back to the default) is logged and
+// turns the shortcut off.
+func (g *guard) applyHotkey() {
+	h, err := hotkey.Parse(g.settings.hotkey)
+	if err != nil {
+		g.logf("WARNING hotkey %v - no shortcut", err)
+	}
+	if err := blackout.WatchHotkey(h); err != nil {
+		g.logf("EXCEPTION watching for the hotkey: %v", err)
+		return
+	}
+	g.logf("hotkey is %q", g.settings.hotkey)
 }
 
 // showMenu is the tray icon's right-click action.
@@ -313,6 +336,7 @@ func (g *guard) applyTrayIcon() {
 // exits, whatever state it's in.
 func (g *guard) cleanup() {
 	g.session.End()
+	blackout.StopHotkey()
 	g.stopIdleTimer()
 	blackout.RestoreExecutionState()
 	if blackout.IsCapsLockOn() {

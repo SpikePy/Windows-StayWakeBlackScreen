@@ -16,7 +16,8 @@
 // Escape then ends the black screen, but the guard keeps running and the
 // countdown restarts. The tray icon (monitor glyph = enabled, the same
 // glyph greyed out with a red strike = disabled) blacks out on left-click;
-// right-click opens Blackout, Enable, Disable, Configure and Exit;
+// right-click opens Blackout, Enable, Disable, Configure and Exit; the
+// hotkey setting (Win+B by default) blacks out at once, too;
 // Configure opens config.yaml in its default editor, and the guard applies
 // the file whenever it is saved.
 //
@@ -68,6 +69,7 @@ type settings struct {
 	idleMinutes      int
 	heartbeatSeconds int
 	autostart        bool
+	hotkey           string
 }
 
 func main() {
@@ -83,6 +85,7 @@ func main() {
 	heartbeatSeconds := flag.Int("heartbeat-seconds", cfg.HeartbeatSeconds, "seconds between Caps Lock activity heartbeats while blacked out (overrides config.yaml)")
 	startEnabled := flag.Bool("start-enabled", cfg.StartEnabled, "background: whether the idle guard is active on launch (overrides config.yaml)")
 	autostartOn := flag.Bool("autostart", cfg.Autostart, "start the idle guard at sign-in through a Startup-folder shortcut; the installed copy applies this every time it starts (overrides config.yaml)")
+	hotkeyFlag := flag.String("hotkey", cfg.Hotkey, `background: shortcut that blacks out the screen at once, e.g. "win+b", or "none" (overrides config.yaml)`)
 	enableLogging := flag.Bool("enable-logging", false, "write diagnostics to StayWakeBlackScreen.log next to the exe")
 	flag.Parse()
 
@@ -101,13 +104,13 @@ func main() {
 	// the whole run, also when the file changes.
 	given := map[string]bool{}
 	flag.Visit(func(f *flag.Flag) { given[f.Name] = true })
-	flagged := settings{*idleMinutes, *heartbeatSeconds, *autostartOn}
+	flagged := settings{*idleMinutes, *heartbeatSeconds, *autostartOn, *hotkeyFlag}
 	reload := func() (settings, error) {
 		cfg, err := config.Load()
 		if err != nil {
 			return settings{}, err
 		}
-		s := settings{cfg.IdleMinutes, cfg.HeartbeatSeconds, cfg.Autostart}
+		s := settings{cfg.IdleMinutes, cfg.HeartbeatSeconds, cfg.Autostart, cfg.Hotkey}
 		if given["idle-minutes"] {
 			s.idleMinutes = flagged.idleMinutes
 		}
@@ -116,6 +119,9 @@ func main() {
 		}
 		if given["autostart"] {
 			s.autostart = flagged.autostart
+		}
+		if given["hotkey"] {
+			s.hotkey = flagged.hotkey
 		}
 		return s, nil
 	}

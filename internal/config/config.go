@@ -17,6 +17,8 @@ import (
 	"regexp"
 	"strconv"
 	"strings"
+
+	"windows-stay-wake-black-screen/internal/hotkey"
 )
 
 // Defaults written to a freshly created config.yaml, and also the
@@ -27,6 +29,7 @@ const (
 	DefaultHeartbeatSeconds = 5
 	DefaultStartEnabled     = true
 	DefaultAutostart        = true
+	DefaultHotkey           = "win+b"
 )
 
 const fileName = "config.yaml"
@@ -50,6 +53,13 @@ heartbeat_seconds: %d
 # enabled from the tray menu (false). Only read when the program starts.
 start_enabled: %t
 
+# hotkey: the keyboard shortcut that blacks out the screen at once while
+# the idle guard runs, even while it's disabled. Modifiers win, ctrl, alt
+# and shift, then one key: a letter, a digit, f1 to f24, or space, enter,
+# tab, insert, delete, home, end, pageup, pagedown, pause, ...
+# Examples: win+b, ctrl+alt+b, shift+f12. "none" turns it off.
+hotkey: %s
+
 ` + autostartBlock
 
 // autostartBlock ends the template, and SetAutostart appends it to a
@@ -67,6 +77,7 @@ type Config struct {
 	HeartbeatSeconds int
 	StartEnabled     bool
 	Autostart        bool
+	Hotkey           string // as written, e.g. "win+b"; see hotkey.Parse
 }
 
 func defaults() Config {
@@ -75,6 +86,7 @@ func defaults() Config {
 		HeartbeatSeconds: DefaultHeartbeatSeconds,
 		StartEnabled:     DefaultStartEnabled,
 		Autostart:        DefaultAutostart,
+		Hotkey:           DefaultHotkey,
 	}
 }
 
@@ -96,7 +108,7 @@ func Load() (Config, error) {
 
 	data, err := os.ReadFile(path)
 	if os.IsNotExist(err) {
-		text := fmt.Sprintf(template, DefaultIdleMinutes, DefaultHeartbeatSeconds, DefaultStartEnabled, DefaultAutostart)
+		text := fmt.Sprintf(template, DefaultIdleMinutes, DefaultHeartbeatSeconds, DefaultStartEnabled, DefaultHotkey, DefaultAutostart)
 		if werr := os.WriteFile(path, []byte(text), 0o644); werr != nil {
 			return def, fmt.Errorf("writing default config.yaml: %w", werr)
 		}
@@ -143,6 +155,9 @@ func fixInvalid(cfg *Config) {
 	if cfg.HeartbeatSeconds < 1 {
 		cfg.HeartbeatSeconds = DefaultHeartbeatSeconds
 	}
+	if _, err := hotkey.Parse(cfg.Hotkey); err != nil {
+		cfg.Hotkey = DefaultHotkey
+	}
 }
 
 // parse fills cfg from the file's "key: value" lines, leaving fields the
@@ -182,6 +197,8 @@ func parse(data []byte, cfg *Config) error {
 			cfg.StartEnabled, err = parseBool(value)
 		case "autostart":
 			cfg.Autostart, err = parseBool(value)
+		case "hotkey":
+			cfg.Hotkey = value
 		default:
 			continue // a setting this version doesn't know
 		}
@@ -214,7 +231,7 @@ func SetAutostart(enabled bool) error {
 	}
 	data, err := os.ReadFile(path)
 	if os.IsNotExist(err) {
-		text := fmt.Sprintf(template, DefaultIdleMinutes, DefaultHeartbeatSeconds, DefaultStartEnabled, enabled)
+		text := fmt.Sprintf(template, DefaultIdleMinutes, DefaultHeartbeatSeconds, DefaultStartEnabled, DefaultHotkey, enabled)
 		return os.WriteFile(path, []byte(text), 0o644)
 	}
 	if err != nil {

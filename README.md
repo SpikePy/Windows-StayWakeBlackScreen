@@ -53,6 +53,8 @@ shows the version and the current state.
 - **Left-click** blacks out the screen at once (the same as Blackout).
 - **Right-click** opens a menu: Blackout, Enable, Disable, Configure,
   Exit.
+- **Win+B** (the `hotkey` setting) blacks out the screen at once from
+  anywhere, the same as Blackout.
 
 **Blackout** blacks out the screen at once, even while the guard is
 disabled. Disabling restores input right away (if blacked out) and lets
@@ -69,6 +71,7 @@ On first run it creates `%LOCALAPPDATA%\StayWakeBlackScreen\config.yaml`
 idle_minutes: 3        # idle time before the screen blacks out
 heartbeat_seconds: 5   # how often Caps Lock is pulsed while blacked out
 start_enabled: true    # false = start paused, enable it from the tray
+hotkey: win+b          # shortcut that blacks out at once; none = off
 autostart: true        # start the idle guard when you sign in
 ```
 

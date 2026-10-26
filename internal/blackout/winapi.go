@@ -35,6 +35,7 @@ var (
 	procUnhookWindowsHookEx           = modUser32.NewProc("UnhookWindowsHookEx")
 	procCallNextHookEx                = modUser32.NewProc("CallNextHookEx")
 	procGetKeyState                   = modUser32.NewProc("GetKeyState")
+	procGetAsyncKeyState              = modUser32.NewProc("GetAsyncKeyState")
 	procKeybdEvent                    = modUser32.NewProc("keybd_event")
 	procShowCursor                    = modUser32.NewProc("ShowCursor")
 	procEnumDisplayMonitors           = modUser32.NewProc("EnumDisplayMonitors")
@@ -66,7 +67,9 @@ const (
 	whMouseLL    = 14
 
 	wmKeydown    = 0x0100
+	wmKeyup      = 0x0101
 	wmSyskeydown = 0x0104
+	wmSyskeyup   = 0x0105
 
 	// WMTimer is exposed so callers can recognize WM_TIMER messages (posted
 	// with Hwnd 0 for timers created via StartTimer) in their message loop.
@@ -78,6 +81,15 @@ const (
 
 	vkEscape  = 0x1B
 	vkCapital = 0x14
+	vkShift   = 0x10
+	vkControl = 0x11
+	vkMenu    = 0x12 // Alt
+	vkLWin    = 0x5B
+	vkRWin    = 0x5C
+
+	// vkUnassigned has no meaning to Windows or any program; see
+	// maskModifierRelease.
+	vkUnassigned = 0xE8
 
 	keyeventfKeyup = 0x0002
 
@@ -85,11 +97,11 @@ const (
 	esSystemRequired  = 0x00000001
 	esDisplayRequired = 0x00000002
 
-	// Arbitrary marker stamped on our own synthetic Caps Lock keystrokes
-	// (via keybd_event's dwExtraInfo) so the input-block hook can recognize
-	// and pass through only these specific events - otherwise the hook
-	// would swallow them like everything else, and the toggle/LED would
-	// never actually update.
+	// Arbitrary marker stamped on our own synthetic keystrokes - the Caps
+	// Lock heartbeat and the hotkey's modifier mask - (via keybd_event's
+	// dwExtraInfo) so the input-block hook can recognize and pass through
+	// only these specific events - otherwise the hook would swallow them
+	// like everything else, and the toggle/LED would never actually update.
 	ownInjectedMarker = 0x53504143 // 'CAPS' ASCII
 
 	// (DPI_AWARENESS_CONTEXT)-4, i.e. PER_MONITOR_AWARE_V2. Written this

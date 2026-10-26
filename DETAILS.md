@@ -42,7 +42,10 @@ starts it this way at sign-in.
 The tray icon is a monitor glyph while enabled and the same glyph greyed
 out with a red strike while disabled. Left-click blacks out at once; right-click
 opens Blackout (the same as opening the program), Enable, Disable,
-Configure (opens `config.yaml` in its default editor) and Exit. The guard
+Configure (opens `config.yaml` in its default editor) and Exit. The
+`hotkey` shortcut (Win+B by default) blacks out at once from anywhere,
+even while the guard is disabled; Windows' own use of that shortcut is
+suppressed while the guard runs. The guard
 doesn't exit on its own otherwise: use *Exit*, Task Manager/`taskkill`,
 or Setup, which stops it when updating or uninstalling.
 
@@ -54,6 +57,7 @@ or Setup, which stops it when updating or uninstalling.
 | `-idle-minutes N` | idle guard | Overrides `idle_minutes`. |
 | `-heartbeat-seconds N` | both | Overrides `heartbeat_seconds`. |
 | `-start-enabled=false` | idle guard | Overrides `start_enabled`. |
+| `-hotkey <shortcut>` | idle guard | Overrides `hotkey`, e.g. `-hotkey ctrl+alt+b` or `-hotkey none`. |
 | `-autostart=false` | both | Overrides `autostart` for this run. |
 | `-enable-logging` | both | Writes `StayWakeBlackScreen.log` next to the exe. |
 
@@ -127,6 +131,7 @@ first run:
 idle_minutes: 3
 heartbeat_seconds: 5
 start_enabled: true
+hotkey: win+b
 autostart: true
 ```
 
@@ -135,6 +140,7 @@ autostart: true
 | `idle_minutes` | `3` | Minutes of inactivity (no real keyboard/mouse input) before the idle guard blacks out the screen. |
 | `heartbeat_seconds` | `5` | While blacked out, how often (seconds) the program toggles Caps Lock as a harmless "still alive" signal that keeps Windows from treating the session as idle. |
 | `start_enabled` | `true` | Whether the idle guard is active as soon as it starts. Set to `false` to start paused — no sleep blocking, no blackout — until enabled from the tray menu. Read only when the program starts. |
+| `hotkey` | `win+b` | Keyboard shortcut that blacks out the screen at once while the idle guard runs, enabled or not. Any of `win`, `ctrl`, `alt`, `shift`, then one key - a letter, a digit, `f1`-`f24`, or `space`, `enter`, `tab`, `insert`, `delete`, `home`, `end`, `pageup`, `pagedown`, `left`/`up`/`right`/`down`, `pause`, `scrolllock`, `printscreen` - joined by `+`, e.g. `ctrl+alt+b`. The modifiers must match exactly (Win+Shift+B is not Win+B). `none` turns it off; an unknown shortcut falls back to `win+b`. |
 | `autostart` | `true` | Whether the idle guard starts in the background when you sign in, through a shortcut in your Startup folder. Setup sets it to match your choice, and the installed program adds or removes the shortcut to match every time it starts, and whenever the file is saved. |
 
 The running idle guard watches `config.yaml` and applies a change as soon
@@ -166,6 +172,15 @@ ignored.
   idle threshold would be reached (re-arming it for the rest if there was
   input in the meantime), and the input hook wakes the program directly
   when Escape is pressed.
+- The hotkey is watched by a second low-level keyboard hook that lives
+  as long as the idle guard, not `RegisterHotKey`: Explorer already
+  registers Win+B and most other Win+key shortcuts, and Windows refuses a
+  second registration. The hook looks only at the shortcut's key and
+  swallows it (and its release) when the modifiers match exactly. With
+  Win or Alt in the shortcut it also taps an unassigned key (`0xE8`), so
+  letting go of Win doesn't then open the Start menu. The blackout's
+  input block passes the release of keys that were already held when it
+  began, so the Win key isn't left "stuck" down afterwards.
 - Opening the program while the idle guard runs doesn't stack a second
   blackout: the new copy finds the guard's hidden tray window, posts it a
   request, and exits; the guard blacks out itself.
@@ -205,7 +220,7 @@ GOOS=windows GOARCH=amd64 go build -trimpath -ldflags "-H=windowsgui -s -w" -o S
 ```
 
 Run the tests with `go test ./...`. They cover the OS-independent parts
-(config loading and editing, the icon glyph and generator, and the timing
+(config loading and editing, hotkey parsing, the icon glyph and generator, and the timing
 limits) and run on any platform; the shortcut code has additional
 Windows-only tests.
 
@@ -247,6 +262,7 @@ internal/singleinstance/  Named-mutex single-instance guard
 internal/setup/           Install/uninstall, downloads through WinINet
 internal/shortcut/        Startup and Start menu shortcuts
 internal/config/          Loads, creates and edits config.yaml
+internal/hotkey/          Parses the hotkey setting ("win+b")
 internal/applog/          Opt-in diagnostics log next to the exe
 tools/genicon/            Renders internal/monitoricon as a .ico file
 cmd/staywakeblackscreen/  StayWakeBlackScreen.exe (both modes)

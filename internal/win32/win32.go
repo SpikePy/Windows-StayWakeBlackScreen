@@ -49,6 +49,10 @@ const (
 	// WMConfigChanged is posted to the background guard's tray window,
 	// from the goroutine watching config.yaml, when the file was saved.
 	WMConfigChanged = wmApp + 4
+
+	// WMHotkeyPressed is posted by the hotkey hook to the background
+	// guard's thread when the configured shortcut is pressed.
+	WMHotkeyPressed = wmApp + 5
 )
 
 // CWUseDefault is CW_USEDEFAULT, for CreateWindow's position and size.

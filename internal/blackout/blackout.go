@@ -99,19 +99,29 @@ var (
 	keyboardHookHandle uintptr
 	mouseHookHandle    uintptr
 
+	// heldAtStart marks the keys that were down as the input block began,
+	// such as the Win key of the shortcut that started it. Their key-ups
+	// still pass, once each: swallowing them would leave Windows believing
+	// they're held down after the blackout ends.
+	heldAtStart [256]bool
+
 	keyboardHookCB = syscall.NewCallback(keyboardHookProc)
 	mouseHookCB    = syscall.NewCallback(mouseHookProc)
 )
 
 // installInputBlockHooks installs system-wide low-level keyboard and mouse
 // hooks that swallow every event - nothing reaches any window, including
-// this process's own. Only Escape is special-cased: it still isn't
+// this process's own - except the release of a key already held when they
+// were installed (see heldAtStart). Only Escape is special-cased: it still isn't
 // delivered anywhere, but it posts WMEscapePressed to this thread.
 // Windows never lets any hook suppress Ctrl+Alt+Del, so that combination
 // always remains a hard escape hatch regardless of anything going wrong.
 func installInputBlockHooks() error {
 	hMod := win32.ModuleHandle()
 
+	for vk := range heldAtStart {
+		heldAtStart[vk] = vk > 0 && keyDown(uint32(vk))
+	}
 	kh, _, e1 := procSetWindowsHookExW.Call(uintptr(whKeyboardLL), keyboardHookCB, uintptr(hMod), 0)
 	if kh == 0 {
 		return fmt.Errorf("SetWindowsHookExW(WH_KEYBOARD_LL): %w", e1)
@@ -150,6 +160,11 @@ func keyboardHookProc(nCode int32, wParam, lParam uintptr) uintptr {
 	if data.DwExtraInfo == ownInjectedMarker {
 		// Our own synthetic Caps Lock heartbeat - let it through so the
 		// toggle state and LED actually update.
+		r, _, _ := procCallNextHookEx.Call(keyboardHookHandle, uintptr(nCode), wParam, lParam)
+		return r
+	}
+	if (wParam == wmKeyup || wParam == wmSyskeyup) && data.VkCode < 256 && heldAtStart[data.VkCode] {
+		heldAtStart[data.VkCode] = false
 		r, _, _ := procCallNextHookEx.Call(keyboardHookHandle, uintptr(nCode), wParam, lParam)
 		return r
 	}
