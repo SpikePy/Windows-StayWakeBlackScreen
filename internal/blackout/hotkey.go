@@ -21,6 +21,9 @@ var (
 	// hotkeyUpPending: the shortcut's key-down was swallowed, so its
 	// key-up must be too, or the focused window would get a stray one.
 	hotkeyUpPending bool
+	// modsDown tracks which modifier keys are held, one bit per key
+	// (see modifierKeys), from the key events the hook sees.
+	modsDown uint8
 
 	hotkeyHookCB = syscall.NewCallback(hotkeyHookProc)
 )
@@ -42,6 +45,12 @@ func WatchHotkey(h hotkey.Hotkey) error {
 	if hotkeyHookHandle != 0 {
 		return nil
 	}
+	modsDown = 0
+	for i, k := range modifierKeys {
+		if keyDown(k.vk) {
+			modsDown |= 1 << i
+		}
+	}
 	hh, _, err := procSetWindowsHookExW.Call(uintptr(whKeyboardLL), hotkeyHookCB, uintptr(win32.ModuleHandle()), 0)
 	if hh == 0 {
 		return fmt.Errorf("SetWindowsHookExW(WH_KEYBOARD_LL): %w", err)
@@ -62,6 +71,7 @@ func StopHotkey() {
 func hotkeyHookProc(nCode int32, wParam, lParam uintptr) uintptr {
 	if nCode >= 0 {
 		data := (*kbdllhookstruct)(unsafe.Pointer(lParam))
+		trackModifier(data.VkCode, wParam)
 		if data.VkCode == hotkeyWanted.VK && data.DwExtraInfo != ownInjectedMarker {
 			switch wParam {
 			case wmKeydown, wmSyskeydown:
@@ -88,22 +98,41 @@ func hotkeyHookProc(nCode int32, wParam, lParam uintptr) uintptr {
 	return r
 }
 
-// heldModifiers returns which modifiers are down right now. Inside a
-// low-level hook the async key state already includes every earlier
-// event, so this is the state the shortcut's key was pressed in.
+// modifierKeys are the left/right-specific keys a low-level hook reports
+// for the modifiers.
+var modifierKeys = [...]struct{ vk, mod uint32 }{
+	{vkLWin, hotkey.Win}, {vkRWin, hotkey.Win},
+	{vkLControl, hotkey.Ctrl}, {vkRControl, hotkey.Ctrl},
+	{vkLMenu, hotkey.Alt}, {vkRMenu, hotkey.Alt},
+	{vkLShift, hotkey.Shift}, {vkRShift, hotkey.Shift},
+}
+
+// trackModifier updates modsDown for one key event.
+func trackModifier(vk uint32, wParam uintptr) {
+	for i, k := range modifierKeys {
+		if k.vk != vk {
+			continue
+		}
+		switch wParam {
+		case wmKeydown, wmSyskeydown:
+			modsDown |= 1 << i
+		case wmKeyup, wmSyskeyup:
+			modsDown &^= 1 << i
+		}
+		return
+	}
+}
+
+// heldModifiers returns which modifiers are down, as tracked from the
+// events the hook saw. Not GetAsyncKeyState: inside the hook it reports
+// a held Win key only while Explorer has the foreground - in a browser or
+// terminal it claims none is, and Windows' own Win+B ran instead.
 func heldModifiers() uint32 {
 	var m uint32
-	if keyDown(vkLWin) || keyDown(vkRWin) {
-		m |= hotkey.Win
-	}
-	if keyDown(vkControl) {
-		m |= hotkey.Ctrl
-	}
-	if keyDown(vkMenu) {
-		m |= hotkey.Alt
-	}
-	if keyDown(vkShift) {
-		m |= hotkey.Shift
+	for i, k := range modifierKeys {
+		if modsDown&(1<<i) != 0 {
+			m |= k.mod
+		}
 	}
 	return m
 }

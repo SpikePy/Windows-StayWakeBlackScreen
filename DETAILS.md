@@ -176,7 +176,11 @@ ignored.
   as long as the idle guard, not `RegisterHotKey`: Explorer already
   registers Win+B and most other Win+key shortcuts, and Windows refuses a
   second registration. The hook looks only at the shortcut's key and
-  swallows it (and its release) when the modifiers match exactly. With
+  swallows it (and its release) when the modifiers match exactly. It
+  tracks which modifiers are held from the key events it sees itself:
+  `GetAsyncKeyState` reports a held Win key inside the hook only while
+  Explorer is in front, so Win+B used to fall through to Windows from a
+  browser or terminal. With
   Win or Alt in the shortcut it also taps an unassigned key (`0xE8`), so
   letting go of Win doesn't then open the Start menu. The blackout's
   input block passes the release of keys that were already held when it

@@ -81,11 +81,15 @@ const (
 
 	vkEscape  = 0x1B
 	vkCapital = 0x14
-	vkShift   = 0x10
-	vkControl = 0x11
-	vkMenu    = 0x12 // Alt
 	vkLWin    = 0x5B
 	vkRWin    = 0x5C
+
+	vkLShift   = 0xA0
+	vkRShift   = 0xA1
+	vkLControl = 0xA2
+	vkRControl = 0xA3
+	vkLMenu    = 0xA4
+	vkRMenu    = 0xA5
 
 	// vkUnassigned has no meaning to Windows or any program; see
 	// maskModifierRelease.

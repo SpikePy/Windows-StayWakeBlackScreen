@@ -96,6 +96,7 @@ func (g *guard) run() error {
 				return err
 			}
 		case blackout.WMHotkeyPressed:
+			g.logf("Hotkey pressed")
 			g.blackoutNow()
 		default:
 			blackout.Dispatch(m)
