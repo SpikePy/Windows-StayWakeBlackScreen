@@ -122,6 +122,14 @@ func installInputBlockHooks() error {
 	for vk := range heldAtStart {
 		heldAtStart[vk] = vk > 0 && keyDown(uint32(vk))
 	}
+	// GetAsyncKeyState misses a held Win key unless Explorer is in front
+	// (see heldModifiers), so add what the hotkey hook saw being held -
+	// above all the Win key of the shortcut that started this blackout.
+	for i, k := range modifierKeys {
+		if modsDown&(1<<i) != 0 {
+			heldAtStart[k.vk] = true
+		}
+	}
 	kh, _, e1 := procSetWindowsHookExW.Call(uintptr(whKeyboardLL), keyboardHookCB, uintptr(hMod), 0)
 	if kh == 0 {
 		return fmt.Errorf("SetWindowsHookExW(WH_KEYBOARD_LL): %w", e1)

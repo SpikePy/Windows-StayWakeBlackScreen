@@ -66,6 +66,7 @@ func StopHotkey() {
 		hotkeyHookHandle = 0
 	}
 	hotkeyUpPending = false
+	modsDown = 0
 }
 
 func hotkeyHookProc(nCode int32, wParam, lParam uintptr) uintptr {
